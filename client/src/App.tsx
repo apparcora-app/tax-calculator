@@ -5,12 +5,14 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 
+import CalculatorForm from "./pages/CalculatorForm";
+import RecentCalculations from "./pages/RecentCalculations";
+
 function Router() {
   return (
     <Switch>
-      {/* Add pages below */}
-      {/* <Route path="/" component={Home}/> */}
-      {/* Fallback to 404 */}
+      <Route path="/" component={CalculatorForm} />
+      <Route path="/recent" component={RecentCalculations} />
       <Route component={NotFound} />
     </Switch>
   );
