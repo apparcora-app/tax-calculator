@@ -145,7 +145,7 @@ export default function CalculatorForm() {
               <PieChartIcon className="w-8 h-8 text-primary" />
             </div>
             <h1 className="text-4xl font-display font-extrabold text-foreground">
-              Your 2025 Tax Estimate
+              Free Income Tax Calculator | Loyal Tax Services
             </h1>
             <p className="mt-4 text-lg text-muted-foreground">
               Based on the information provided, here is your estimated tax scenario.
