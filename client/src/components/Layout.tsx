@@ -25,7 +25,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Calculator className="w-4 h-4 text-primary-foreground" />
             </div>
             <span className="font-display font-bold text-lg tracking-tight">
-              TaxClear<span className="text-primary/60">.</span>
+              Free Income Tax Calculator<span className="text-primary/60">.</span>
             </span>
           </div>
 
@@ -61,7 +61,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <footer className="border-t border-border/50 bg-white py-8 mt-auto">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-muted-foreground">
           <p>This is a simplified estimator and does not replace professional tax advice.</p>
-          <p className="mt-2">© {new Date().getFullYear()} TaxClear Calculator.</p>
+          <p className="mt-2">© {new Date().getFullYear()} Free Income Tax Calculator.</p>
         </div>
       </footer>
     </div>
