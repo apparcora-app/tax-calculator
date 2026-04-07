@@ -1,4 +1,4 @@
- {
+{
   "version": 2,
   "builds": [
     {
@@ -21,6 +21,17 @@
     {
       "source": "/(.*)",
       "destination": "/"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/embed",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "frame-ancestors 'self' https://loyaltaxservices.org https://www.loyaltaxservices.org"
+        }
+      ]
     }
   ]
 }
