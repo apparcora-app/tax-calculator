@@ -94,10 +94,14 @@ const defaultValues: FormValues = {
   educationExpenses: 0,
 };
 
+import { useLocation } from "wouter";
+
 // ----------------------------------------------------------------------
 // Main Page Component
 // ----------------------------------------------------------------------
 export default function CalculatorForm() {
+  const [pathname] = useLocation();
+  const isEmbed = pathname === "/embed";
   const [step, setStep] = useState(1);
   const totalSteps = 4;
   
@@ -176,17 +180,19 @@ export default function CalculatorForm() {
             animate={{ opacity: 1, y: 0 }}
             className="max-w-4xl mx-auto p-4 sm:p-0"
           >
-            <div className="text-center mb-10">
-              <div className="inline-flex items-center justify-center p-3 bg-primary/5 rounded-2xl mb-4">
-                <PieChartIcon className="w-8 h-8 text-primary" />
+            {!isEmbed && (
+              <div className="text-center mb-10">
+                <div className="inline-flex items-center justify-center p-3 bg-primary/5 rounded-2xl mb-4">
+                  <PieChartIcon className="w-8 h-8 text-primary" />
+                </div>
+                <h1 className="text-4xl font-display font-extrabold text-foreground">
+                  Your Tax Summary | 2025
+                </h1>
+                <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+                  Based on the top-tier 2025 fiscal projections, here is your estimated scenario for Federal, State, and Self-Employment taxes.
+                </p>
               </div>
-              <h1 className="text-4xl font-display font-extrabold text-foreground">
-                Your Tax Summary | 2025
-              </h1>
-              <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-                Based on the top-tier 2025 fiscal projections, here is your estimated scenario for Federal, State, and Self-Employment taxes.
-              </p>
-            </div>
+            )}
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* Main Highlight Card */}
@@ -292,6 +298,19 @@ export default function CalculatorForm() {
                   <Button onClick={restart} variant="outline" className="gap-2 border-primary/20 text-primary hover:bg-primary/5">
                     <RefreshCcw className="w-4 h-4" /> Start New Calculation
                   </Button>
+                  {!isEmbed && (
+                    <Button 
+                      onClick={() => {
+                        const embedCode = `<iframe src="${window.location.origin}/embed" width="100%" height="800px" frameborder="0"></iframe>`;
+                        navigator.clipboard.writeText(embedCode);
+                        alert("Embed code copied to clipboard!");
+                      }} 
+                      variant="outline" 
+                      className="gap-2 border-primary/20 text-primary hover:bg-primary/5"
+                    >
+                      <Download className="w-4 h-4" /> Get Embed Code
+                    </Button>
+                  )}
                 </div>
                 
                 <div className="mt-8 pt-6 border-t border-border/40 flex items-start gap-3">
@@ -354,10 +373,12 @@ export default function CalculatorForm() {
                 {/* STEP 1: Basic Info */}
                 {step === 1 && (
                   <div className="space-y-8">
-                    <div>
-                      <h2 className="text-3xl font-display font-bold mb-2">Let's start with the basics</h2>
-                      <p className="text-muted-foreground">This helps us determine your standard deduction and eligibility.</p>
-                    </div>
+                    {!isEmbed && (
+                      <div>
+                        <h2 className="text-3xl font-display font-bold mb-2">Let's start with the basics</h2>
+                        <p className="text-muted-foreground">This helps us determine your standard deduction and eligibility.</p>
+                      </div>
+                    )}
 
                     <div className="space-y-6">
                       <div>

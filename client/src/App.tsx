@@ -12,6 +12,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={CalculatorForm} />
+      <Route path="/embed" component={CalculatorForm} />
       <Route path="/recent" component={RecentCalculations} />
       <Route component={NotFound} />
     </Switch>
