@@ -9,13 +9,17 @@ import {
   CheckCircle2, 
   AlertCircle, 
   PieChart as PieChartIcon,
-  RefreshCcw
+  RefreshCcw,
+  Download,
+  Info
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 
 import { useCalculateTax } from "@/hooks/use-tax";
 import { Layout } from "@/components/Layout";
-import { Label, Input, MoneyInput, Button, RadioCardGroup } from "@/components/FormControls";
+import { Label, Input, MoneyInput, Button, RadioCardGroup, Select } from "@/components/FormControls";
 import { cn } from "@/lib/utils";
 
 // ----------------------------------------------------------------------
@@ -25,6 +29,7 @@ const formSchema = z.object({
   // Basic Info
   taxYear: z.coerce.number().default(2025),
   filingStatus: z.string().min(1, "Please select a filing status"),
+  state: z.string().default("Other"),
   age: z.coerce.number().min(1, "Age is required").max(120, "Invalid age"),
   dependentsUnder17: z.coerce.number().default(0),
   dependentsInSchool: z.coerce.number().default(0),
@@ -34,10 +39,13 @@ const formSchema = z.object({
   wages: z.coerce.number().default(0),
   spouseWages: z.coerce.number().default(0),
   businessIncome: z.coerce.number().default(0),
+  businessExpenses: z.coerce.number().default(0),
   taxesWithheld: z.coerce.number().default(0),
   interestIncome: z.coerce.number().default(0),
   dividendIncome: z.coerce.number().default(0),
+  qualifiedDividends: z.coerce.number().default(0),
   capitalGains: z.coerce.number().default(0),
+  longTermCapitalGains: z.coerce.number().default(0),
   otherIncome: z.coerce.number().default(0),
 
   // Deductions
@@ -59,6 +67,7 @@ type FormValues = z.infer<typeof formSchema>;
 const defaultValues: FormValues = {
   taxYear: 2025,
   filingStatus: "Single",
+  state: "Other",
   age: 30,
   dependentsUnder17: 0,
   dependentsInSchool: 0,
@@ -66,10 +75,13 @@ const defaultValues: FormValues = {
   wages: 0,
   spouseWages: 0,
   businessIncome: 0,
+  businessExpenses: 0,
   taxesWithheld: 0,
   interestIncome: 0,
   dividendIncome: 0,
+  qualifiedDividends: 0,
   capitalGains: 0,
+  longTermCapitalGains: 0,
   otherIncome: 0,
   iraContributions: 0,
   studentLoanInterest: 0,
@@ -128,119 +140,170 @@ export default function CalculatorForm() {
     
     // Chart data
     const chartData = [
-      { name: 'Taxable Income', value: result.taxableIncome, color: 'hsl(var(--primary))' },
-      { name: 'Deductions', value: result.standardOrItemizedDeduction, color: 'hsl(var(--muted-foreground))' },
-      { name: 'Tax Free (Other)', value: Math.max(0, result.totalIncome - result.taxableIncome - result.standardOrItemizedDeduction), color: 'hsl(var(--secondary))' }
+      { name: 'Fed Tax', value: result.estimatedTax, color: 'hsl(var(--primary))' },
+      { name: 'State Tax', value: result.stateIncomeTax, color: 'hsl(var(--secondary))' },
+      { name: 'SE Tax', value: result.selfEmploymentTax, color: '#f59e0b' },
+      { name: 'Deductions', value: result.standardOrItemizedDeduction, color: 'hsl(var(--muted-foreground)/0.4)' },
     ].filter(d => d.value > 0);
+
+    const handleDownloadPDF = async () => {
+      const element = document.getElementById('tax-report');
+      if (!element) return;
+      
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff'
+      });
+      
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'px',
+        format: [canvas.width / 2, canvas.height / 2]
+      });
+      
+      pdf.addImage(imgData, 'PNG', 0, 0, canvas.width / 2, canvas.height / 2);
+      pdf.save(`Tax_Estimate_2025.pdf`);
+    };
 
     return (
       <Layout>
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="max-w-4xl mx-auto"
-        >
-          <div className="text-center mb-10">
-            <div className="inline-flex items-center justify-center p-3 bg-primary/5 rounded-2xl mb-4">
-              <PieChartIcon className="w-8 h-8 text-primary" />
-            </div>
-            <h1 className="text-4xl font-display font-extrabold text-foreground">
-              Free Income Tax Calculator | Loyal Tax Services
-            </h1>
-            <p className="mt-4 text-lg text-muted-foreground">
-              Based on the information provided, here is your estimated tax scenario.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Main Highlight Card */}
-            <div className="lg:col-span-1 flex flex-col gap-6">
-              <div className="glass-card rounded-3xl p-8 text-center relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-white/40 to-transparent pointer-events-none" />
-                
-                <h2 className="text-sm font-bold tracking-wider text-muted-foreground uppercase mb-2">
-                  ESTIMATED {isRefund ? "REFUND" : "AMOUNT OWED"}
-                </h2>
-                
-                <div className={`text-5xl font-display font-extrabold tracking-tight mb-2 ${
-                  isRefund ? "text-green-600" : "text-destructive"
-                }`}>
-                  ${absAmount.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-                </div>
-                
-                <div className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1 rounded-full bg-muted mt-2">
-                  {isRefund ? (
-                    <><CheckCircle2 className="w-4 h-4 text-green-600" /> Great news!</>
-                  ) : (
-                    <><AlertCircle className="w-4 h-4 text-destructive" /> Plan accordingly</>
-                  )}
-                </div>
+        <div id="tax-report">
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-4xl mx-auto p-4 sm:p-0"
+          >
+            <div className="text-center mb-10">
+              <div className="inline-flex items-center justify-center p-3 bg-primary/5 rounded-2xl mb-4">
+                <PieChartIcon className="w-8 h-8 text-primary" />
               </div>
-
-              <div className="glass-card rounded-3xl p-6">
-                <h3 className="font-display font-bold mb-4">Visual Breakdown</h3>
-                <div className="h-48 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={chartData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={50}
-                        outerRadius={70}
-                        paddingAngle={2}
-                        dataKey="value"
-                      >
-                        {chartData.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value: number) => `$${value.toLocaleString()}`} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="flex flex-wrap justify-center gap-3 mt-2 text-xs font-medium text-muted-foreground">
-                  {chartData.map(d => (
-                    <span key={d.name} className="flex items-center gap-1.5">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: d.color }} />
-                      {d.name}
-                    </span>
-                  ))}
-                </div>
-              </div>
+              <h1 className="text-4xl font-display font-extrabold text-foreground">
+                Your Tax Summary | 2025
+              </h1>
+              <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+                Based on the top-tier 2025 fiscal projections, here is your estimated scenario for Federal, State, and Self-Employment taxes.
+              </p>
             </div>
 
-            {/* Detailed Breakdown List */}
-            <div className="lg:col-span-2 glass-card rounded-3xl p-8">
-              <h3 className="font-display text-2xl font-bold mb-6">Detailed Summary</h3>
-              
-              <div className="space-y-4">
-                <ResultRow label="Total Income" value={result.totalIncome} />
-                <ResultRow label="Adjusted Gross Income (AGI)" value={result.adjustedGrossIncome} />
-                <div className="my-4 border-t border-border/60" />
-                <ResultRow label="Deductions Used" value={result.standardOrItemizedDeduction} />
-                <ResultRow label="Taxable Income" value={result.taxableIncome} highlighted />
-                <div className="my-4 border-t border-border/60" />
-                <ResultRow label="Estimated Total Tax" value={result.estimatedTax} />
-                <ResultRow label="Total Credits" value={result.totalCredits} isCredit />
-                <div className="my-4 border-t border-border/60" />
-                
-                <div className="flex justify-between items-center py-3 px-4 bg-muted/30 rounded-xl">
-                  <span className="font-bold text-foreground">Total Taxes Withheld</span>
-                  <span className="font-mono font-medium text-foreground">
-                    ${defaultValues.taxesWithheld.toLocaleString() /* Simplification: passing back original value not in schema usually, but we have it in form state */}
-                  </span>
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Main Highlight Card */}
+              <div className="lg:col-span-1 flex flex-col gap-6">
+                <div className="glass-card rounded-3xl p-8 text-center relative overflow-hidden bg-white/50 backdrop-blur-xl border border-white/20 shadow-2xl shadow-primary/5">
+                  <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent pointer-events-none" />
+                  
+                  <h2 className="text-sm font-bold tracking-wider text-muted-foreground uppercase mb-2">
+                    ESTIMATED {isRefund ? "REFUND" : "AMOUNT OWED"}
+                  </h2>
+                  
+                  <div className={`text-5xl font-display font-extrabold tracking-tight mb-2 ${
+                    isRefund ? "text-green-600" : "text-destructive"
+                  }`}>
+                    ${absAmount.toLocaleString()}
+                  </div>
+                  
+                  <div className={cn(
+                    "inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1 rounded-full mt-2",
+                    isRefund ? "bg-green-100 text-green-800" : "bg-destructive/10 text-destructive"
+                  )}>
+                    {isRefund ? (
+                      <><CheckCircle2 className="w-4 h-4" /> Great news!</>
+                    ) : (
+                      <><AlertCircle className="w-4 h-4" /> Plan accordingly</>
+                    )}
+                  </div>
+                </div>
+
+                <div className="glass-card rounded-3xl p-6 bg-white/50 backdrop-blur-xl border border-white/20 shadow-xl shadow-primary/5">
+                  <h3 className="font-display font-bold mb-4">Liability Breakdown</h3>
+                  <div className="h-48 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={chartData}
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={50}
+                          outerRadius={70}
+                          paddingAngle={2}
+                          dataKey="value"
+                        >
+                          {chartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                        <Tooltip formatter={(value: number) => `$${value.toLocaleString()}`} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="flex flex-wrap justify-center gap-3 mt-2 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+                    {chartData.map(d => (
+                      <span key={d.name} className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.color }} />
+                        {d.name}
+                      </span>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              <div className="mt-10 flex justify-end">
-                <Button onClick={restart} variant="outline" className="gap-2">
-                  <RefreshCcw className="w-4 h-4" /> Start Over
-                </Button>
+              {/* Detailed Breakdown List */}
+              <div className="lg:col-span-2 glass-card rounded-3xl p-8 bg-white/50 backdrop-blur-xl border border-white/20 shadow-2xl shadow-primary/5">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="font-display text-2xl font-bold">Detailed Summary</h3>
+                  <Button onClick={handleDownloadPDF} variant="outline" className="gap-2 h-10 py-0 text-sm">
+                    <Download className="w-4 h-4" /> Export PDF
+                  </Button>
+                </div>
+                
+                <div className="space-y-4">
+                  <ResultRow label="Total Gross Income" value={result.totalIncome} />
+                  <ResultRow label="Adjusted Gross Income (AGI)" value={result.adjustedGrossIncome} />
+                  <div className="my-4 border-t border-border/40" />
+                  
+                  <ResultRow label="Standard/Itemized Deduction" value={result.standardOrItemizedDeduction} />
+                  <ResultRow label="Taxable Income" value={result.taxableIncome} highlighted />
+                  <div className="my-4 border-t border-border/40" />
+                  
+                  <div className="space-y-2 mb-6">
+                    <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-4">Tax Liability Breakout</h4>
+                    <ResultRow label="Federal Income Tax" value={result.estimatedTax} />
+                    <ResultRow label="Self-Employment Tax" value={result.selfEmploymentTax} />
+                    <ResultRow label="Estimated State Tax" value={result.stateIncomeTax} />
+                    <ResultRow label="Total Tax Credits Applied" value={result.totalCredits} isCredit />
+                  </div>
+                  
+                  <div className="pt-4 border-t-2 border-primary/20">
+                    <div className="flex justify-between items-center py-4 px-5 bg-primary/5 rounded-2xl border border-primary/10">
+                      <div>
+                        <span className="block font-bold text-primary text-lg">Total Taxes Owed</span>
+                        <span className="text-xs text-primary/60 font-medium">Sum of all liabilities after credits</span>
+                      </div>
+                      <span className="text-2xl font-display font-extrabold text-primary">
+                        ${(result.estimatedTax + result.selfEmploymentTax + result.stateIncomeTax - result.totalCredits).toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-10 flex gap-4 flex-wrap">
+                  <Button onClick={restart} variant="outline" className="gap-2 border-primary/20 text-primary hover:bg-primary/5">
+                    <RefreshCcw className="w-4 h-4" /> Start New Calculation
+                  </Button>
+                </div>
+                
+                <div className="mt-8 pt-6 border-t border-border/40 flex items-start gap-3">
+                  <Info className="w-4 h-4 text-muted-foreground/60 flex-shrink-0 mt-0.5" />
+                  <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic">
+                    Disclaimer: This tool provides estimates only based on projected 2025 tax laws. It does not constitute official tax advice. Actual tax liability depends on various individual factors and finalized IRS documentation. Always consult with a qualified tax professional.
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-        </motion.div>
+          </motion.div>
+        </div>
       </Layout>
     );
   }
@@ -309,7 +372,9 @@ export default function CalculatorForm() {
                               options={[
                                 { label: "Single", value: "Single" },
                                 { label: "Married Jointly", value: "Married Filing Jointly" },
+                                { label: "Married Separately", value: "Married Filing Separately" },
                                 { label: "Head of Household", value: "Head of Household" },
+                                { label: "Qualifying Surviving Spouse", value: "Qualifying Surviving Spouse" },
                               ]}
                             />
                           )}
@@ -318,6 +383,17 @@ export default function CalculatorForm() {
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div>
+                          <Label htmlFor="state">Residency State</Label>
+                          <Select id="state" {...register("state")} error={errors.state?.message}>
+                            <option value="Other">Other / No Income Tax State</option>
+                            <option value="California">California</option>
+                            <option value="New York">New York</option>
+                            <option value="Illinois">Illinois</option>
+                            <option value="Texas">Texas</option>
+                            <option value="Florida">Florida</option>
+                          </Select>
+                        </div>
                         <div>
                           <Label htmlFor="age">Your Age</Label>
                           <Input 
@@ -377,25 +453,45 @@ export default function CalculatorForm() {
                         <MoneyInput id="taxesWithheld" {...register("taxesWithheld")} />
                       </div>
 
-                      <div className="col-span-1 pt-4 border-t border-border/50 sm:col-span-2">
-                        <h3 className="font-semibold text-lg mb-4">Other Income Sources</h3>
+                      <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t border-border/50">
+                        <div className="sm:col-span-2">
+                          <h3 className="font-semibold text-lg mb-2">Self-Employment / Business</h3>
+                          <p className="text-xs text-muted-foreground mb-4">Calculate net profit for 1099 and freelance income.</p>
+                        </div>
+                        <div>
+                          <Label htmlFor="businessIncome">Gross Business Income</Label>
+                          <MoneyInput id="businessIncome" {...register("businessIncome")} />
+                        </div>
+                        <div>
+                          <Label htmlFor="businessExpenses">Business Expenses</Label>
+                          <MoneyInput id="businessExpenses" {...register("businessExpenses")} />
+                        </div>
                       </div>
 
-                      <div>
-                        <Label htmlFor="businessIncome">Business/Freelance (1099)</Label>
-                        <MoneyInput id="businessIncome" {...register("businessIncome")} />
-                      </div>
-                      <div>
-                        <Label htmlFor="interestIncome">Interest Income</Label>
-                        <MoneyInput id="interestIncome" {...register("interestIncome")} />
-                      </div>
-                      <div>
-                        <Label htmlFor="dividendIncome">Dividends</Label>
-                        <MoneyInput id="dividendIncome" {...register("dividendIncome")} />
-                      </div>
-                      <div>
-                        <Label htmlFor="capitalGains">Capital Gains (Stock/Crypto)</Label>
-                        <MoneyInput id="capitalGains" {...register("capitalGains")} />
+                      <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t border-border/50">
+                        <div className="sm:col-span-2">
+                          <h3 className="font-semibold text-lg mb-2">Investments & Gains</h3>
+                        </div>
+                        <div>
+                          <Label htmlFor="interestIncome">Interest Income</Label>
+                          <MoneyInput id="interestIncome" {...register("interestIncome")} />
+                        </div>
+                        <div>
+                          <Label htmlFor="dividendIncome">Total Dividends</Label>
+                          <MoneyInput id="dividendIncome" {...register("dividendIncome")} />
+                        </div>
+                        <div>
+                          <Label htmlFor="qualifiedDividends">Qualified Dividends</Label>
+                          <MoneyInput id="qualifiedDividends" {...register("qualifiedDividends")} />
+                        </div>
+                        <div>
+                          <Label htmlFor="capitalGains">Short-Term Cap. Gains</Label>
+                          <MoneyInput id="capitalGains" {...register("capitalGains")} />
+                        </div>
+                        <div>
+                          <Label htmlFor="longTermCapitalGains">Long-Term Cap. Gains</Label>
+                          <MoneyInput id="longTermCapitalGains" {...register("longTermCapitalGains")} />
+                        </div>
                       </div>
                     </div>
                   </div>

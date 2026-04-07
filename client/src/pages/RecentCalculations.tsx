@@ -67,15 +67,36 @@ export default function RecentCalculations() {
                     </span>
                   </div>
 
-                  <div className="mb-6">
-                    <h4 className="text-sm font-semibold text-muted-foreground mb-1">
-                      {calc.filingStatus}
-                    </h4>
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-sm font-medium text-muted-foreground">AGI:</span>
-                      <span className="font-mono font-bold text-foreground">
+                   <div className="mb-6 space-y-2">
+                    <div className="flex justify-between items-center text-xs font-semibold uppercase tracking-wider text-muted-foreground/60">
+                      <span>{calc.filingStatus}</span>
+                      <span className="text-primary">{calc.state}</span>
+                    </div>
+                    
+                    <div className="flex items-baseline justify-between border-b border-border/30 pb-1">
+                      <span className="text-xs font-medium text-muted-foreground">AGI:</span>
+                      <span className="font-mono text-sm font-bold text-foreground">
                         ${calc.adjustedGrossIncome.toLocaleString()}
                       </span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-2 text-[10px] font-bold text-muted-foreground/80">
+                      <div className="flex justify-between">
+                        <span>Fed:</span> 
+                        <span className="font-mono text-foreground">${calc.estimatedTax.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>State:</span> 
+                        <span className="font-mono text-foreground">${calc.stateIncomeTax.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>SE:</span> 
+                        <span className="font-mono text-foreground">${calc.selfEmploymentTax.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Credits:</span> 
+                        <span className="font-mono text-green-600">-${calc.totalCredits.toLocaleString()}</span>
+                      </div>
                     </div>
                   </div>
 

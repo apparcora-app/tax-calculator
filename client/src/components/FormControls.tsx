@@ -185,3 +185,37 @@ export function RadioCardGroup({
     </div>
   );
 }
+// ----------------------------------------------------------------------
+// Styled Select
+// ----------------------------------------------------------------------
+export const Select = forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HTMLSelectElement> & { error?: string }>(
+  ({ className, error, children, ...props }, ref) => {
+    return (
+      <div className="relative w-full">
+        <select
+          ref={ref}
+          className={cn(
+            "w-full px-4 py-3 rounded-xl appearance-none",
+            "bg-white border-2 transition-all duration-200",
+            "text-foreground text-base",
+            "focus:outline-none",
+            error 
+              ? "border-destructive focus:border-destructive focus:ring-4 focus:ring-destructive/10" 
+              : "border-border focus:border-primary focus:ring-4 focus:ring-primary/10 hover:border-border/80",
+            className
+          )}
+          {...props}
+        >
+          {children}
+        </select>
+        <div className="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
+          <svg className="h-4 w-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+        {error && <p className="mt-1.5 text-sm text-destructive font-medium">{error}</p>}
+      </div>
+    );
+  }
+);
+Select.displayName = "Select";
