@@ -18,7 +18,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className={cn("min-h-screen flex flex-col", isEmbed ? "bg-transparent" : "bg-background")}>
-      {/* Premium Top Navigation */}
       {!isEmbed && (
         <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-white/80 backdrop-blur-xl">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -55,11 +54,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </header>
       )}
 
-      {/* Main Content Area */}
-      <main className={cn(
-        "flex-1 max-w-5xl mx-auto w-full",
-        isEmbed ? "p-0" : "px-4 sm:px-6 lg:px-8 py-8 sm:py-12"
-      )}>
+      <main
+        className={cn(
+          "flex-1 max-w-5xl mx-auto w-full",
+          isEmbed ? "px-0 py-0" : "px-4 sm:px-6 lg:px-8 py-8 sm:py-12",
+        )}
+      >
         {children}
       </main>
 
@@ -75,5 +75,4 @@ export function Layout({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-
 
