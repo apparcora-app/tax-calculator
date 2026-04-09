@@ -1,6 +1,5 @@
-import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Calculator, Clock, LayoutDashboard, Calculator as CalcIcon } from "lucide-react";
+import { Calculator, Calculator as CalcIcon } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -10,16 +9,13 @@ function cn(...inputs: ClassValue[]) {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [pathname] = useLocation();
-  const isEmbed = pathname === "/embed";
-  const [navItems] = useState([
+  const navItems = [
     { href: "/", label: "Estimator", icon: CalcIcon },
-    { href: "/recent", label: "History", icon: Clock },
-  ]);
+  ];
 
   return (
-    <div className={cn("min-h-screen flex flex-col", isEmbed ? "bg-transparent" : "bg-background")}>
-      {!isEmbed && (
-        <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-white/80 backdrop-blur-xl">
+    <div className="min-h-screen flex flex-col bg-background">
+      <header className="sticky top-0 z-50 w-full border-b border-border/50 bg-white/80 backdrop-blur-xl">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 rounded-xl bg-primary flex items-center justify-center shadow-md shadow-primary/20">
@@ -51,28 +47,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
               })}
             </nav>
           </div>
-        </header>
-      )}
+      </header>
 
-      <main
-        className={cn(
-          "flex-1 max-w-5xl mx-auto w-full",
-          isEmbed ? "px-0 py-0" : "px-4 sm:px-6 lg:px-8 py-8 sm:py-12",
-        )}
-      >
+      <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
         {children}
       </main>
 
       {/* Simple Footer */}
-      {!isEmbed && (
-        <footer className="border-t border-border/50 bg-white py-8 mt-auto">
+      <footer className="border-t border-border/50 bg-white py-8 mt-auto">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-sm text-muted-foreground">
             <p>This is a simplified estimator and does not replace professional tax advice.</p>
             <p className="mt-2">© {new Date().getFullYear()} Free Income Tax Calculator.</p>
           </div>
-        </footer>
-      )}
+      </footer>
     </div>
   );
 }
-

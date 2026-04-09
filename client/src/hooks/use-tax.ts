@@ -1,5 +1,5 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type CalculateTaxInput, type CalculateTaxResponse, type CalculationsListResponse } from "@shared/routes";
+import { useMutation } from "@tanstack/react-query";
+import { api, type CalculateTaxInput, type CalculateTaxResponse } from "@shared/routes";
 import { z } from "zod";
 
 // Create a robust logging parser to catch silent validation failures
@@ -13,8 +13,6 @@ function parseWithLogging<T>(schema: z.ZodSchema<T>, data: unknown, label: strin
 }
 
 export function useCalculateTax() {
-  const queryClient = useQueryClient();
-
   return useMutation({
     mutationFn: async (data: CalculateTaxInput): Promise<CalculateTaxResponse> => {
       // Ensure we're sending what the backend expects by parsing through input schema first
@@ -38,28 +36,6 @@ export function useCalculateTax() {
 
       const rawResponse = await res.json();
       return parseWithLogging(api.tax.calculate.responses[200], rawResponse, "CalculateTaxResponse");
-    },
-    onSuccess: () => {
-      // Invalidate the recent calculations list so it updates
-      queryClient.invalidateQueries({ queryKey: [api.tax.getRecent.path] });
-    },
-  });
-}
-
-export function useRecentCalculations() {
-  return useQuery({
-    queryKey: [api.tax.getRecent.path],
-    queryFn: async (): Promise<CalculationsListResponse> => {
-      const res = await fetch(api.tax.getRecent.path, {
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to fetch recent calculations");
-      }
-
-      const rawResponse = await res.json();
-      return parseWithLogging(api.tax.getRecent.responses[200], rawResponse, "RecentCalculationsList");
     },
   });
 }

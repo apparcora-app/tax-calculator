@@ -16,6 +16,7 @@ import {
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import { filingStatusValues, stateValues } from "@shared/schema";
 
 import { useCalculateTax } from "@/hooks/use-tax";
 import { Layout } from "@/components/Layout";
@@ -27,39 +28,50 @@ import { cn } from "@/lib/utils";
 // ----------------------------------------------------------------------
 const formSchema = z.object({
   // Basic Info
-  taxYear: z.coerce.number().default(2025),
-  filingStatus: z.string().min(1, "Please select a filing status"),
-  state: z.string().default("Other"),
+  taxYear: z.coerce.number().int().min(2025).max(2025).default(2025),
+  filingStatus: z.enum(filingStatusValues, {
+    message: "Please select a filing status",
+  }),
+  state: z.enum(stateValues).default("Other"),
   age: z.coerce.number().min(1, "Age is required").max(120, "Invalid age"),
-  dependentsUnder17: z.coerce.number().default(0),
-  dependentsInSchool: z.coerce.number().default(0),
-  otherDependents: z.coerce.number().default(0),
+  dependentsUnder17: z.coerce.number().int().min(0).default(0),
+  dependentsInSchool: z.coerce.number().int().min(0).default(0),
+  otherDependents: z.coerce.number().int().min(0).default(0),
 
   // Income
-  wages: z.coerce.number().default(0),
-  spouseWages: z.coerce.number().default(0),
-  businessIncome: z.coerce.number().default(0),
-  businessExpenses: z.coerce.number().default(0),
-  taxesWithheld: z.coerce.number().default(0),
-  interestIncome: z.coerce.number().default(0),
-  dividendIncome: z.coerce.number().default(0),
-  qualifiedDividends: z.coerce.number().default(0),
-  capitalGains: z.coerce.number().default(0),
-  longTermCapitalGains: z.coerce.number().default(0),
-  otherIncome: z.coerce.number().default(0),
+  wages: z.coerce.number().int().min(0).default(0),
+  spouseWages: z.coerce.number().int().min(0).default(0),
+  businessIncome: z.coerce.number().int().min(0).default(0),
+  businessExpenses: z.coerce.number().int().min(0).default(0),
+  taxesWithheld: z.coerce.number().int().min(0).default(0),
+  stateTaxesWithheld: z.coerce.number().int().min(0).default(0),
+  interestIncome: z.coerce.number().int().min(0).default(0),
+  dividendIncome: z.coerce.number().int().min(0).default(0),
+  qualifiedDividends: z.coerce.number().int().min(0).default(0),
+  capitalGains: z.coerce.number().int().min(0).default(0),
+  longTermCapitalGains: z.coerce.number().int().min(0).default(0),
+  otherIncome: z.coerce.number().int().min(0).default(0),
 
   // Deductions
-  iraContributions: z.coerce.number().default(0),
-  studentLoanInterest: z.coerce.number().default(0),
-  medicalExpenses: z.coerce.number().default(0),
-  stateLocalTaxes: z.coerce.number().default(0),
-  mortgageInterest: z.coerce.number().default(0),
-  charitableContributions: z.coerce.number().default(0),
+  iraContributions: z.coerce.number().int().min(0).default(0),
+  studentLoanInterest: z.coerce.number().int().min(0).default(0),
+  medicalExpenses: z.coerce.number().int().min(0).default(0),
+  stateLocalTaxes: z.coerce.number().int().min(0).default(0),
+  mortgageInterest: z.coerce.number().int().min(0).default(0),
+  charitableContributions: z.coerce.number().int().min(0).default(0),
 
   // Credits
-  childcareExpenses: z.coerce.number().default(0),
-  energyImprovements: z.coerce.number().default(0),
-  educationExpenses: z.coerce.number().default(0),
+  childcareExpenses: z.coerce.number().int().min(0).default(0),
+  energyImprovements: z.coerce.number().int().min(0).default(0),
+  educationExpenses: z.coerce.number().int().min(0).default(0),
+}).superRefine((value, ctx) => {
+  if (value.qualifiedDividends > value.dividendIncome) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Qualified dividends cannot exceed total dividends",
+      path: ["qualifiedDividends"],
+    });
+  }
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -77,6 +89,7 @@ const defaultValues: FormValues = {
   businessIncome: 0,
   businessExpenses: 0,
   taxesWithheld: 0,
+  stateTaxesWithheld: 0,
   interestIncome: 0,
   dividendIncome: 0,
   qualifiedDividends: 0,
@@ -92,6 +105,20 @@ const defaultValues: FormValues = {
   childcareExpenses: 0,
   energyImprovements: 0,
   educationExpenses: 0,
+};
+
+const stateOptionLabels: Record<typeof stateValues[number], string> = {
+  Other: "Other / Unsupported state estimate",
+  Arizona: "Arizona",
+  California: "California",
+  Colorado: "Colorado",
+  Florida: "Florida",
+  Illinois: "Illinois",
+  Michigan: "Michigan",
+  "New York": "New York",
+  "North Carolina": "North Carolina",
+  Pennsylvania: "Pennsylvania",
+  Texas: "Texas",
 };
 
 import { useLocation } from "wouter";
@@ -133,6 +160,37 @@ export default function CalculatorForm() {
     setStep(1);
     calculateMutation.reset();
   };
+
+  useEffect(() => {
+    if (!isEmbed) return;
+
+    const postHeight = () => {
+      const height = Math.max(
+        document.documentElement.scrollHeight,
+        document.body.scrollHeight,
+      );
+
+      window.parent.postMessage(
+        { type: "tax-calculator:resize", height },
+        "*",
+      );
+    };
+
+    postHeight();
+
+    const observer = new ResizeObserver(() => {
+      postHeight();
+    });
+
+    observer.observe(document.body);
+
+    window.addEventListener("load", postHeight);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("load", postHeight);
+    };
+  }, [isEmbed, step, calculateMutation.isSuccess]);
 
   // ----------------------------------------------------------------------
   // Results View (Rendered when mutation succeeds)
@@ -180,19 +238,17 @@ export default function CalculatorForm() {
             animate={{ opacity: 1, y: 0 }}
             className="max-w-4xl mx-auto p-4 sm:p-0"
           >
-            {!isEmbed && (
-              <div className="text-center mb-10">
-                <div className="inline-flex items-center justify-center p-3 bg-primary/5 rounded-2xl mb-4">
-                  <PieChartIcon className="w-8 h-8 text-primary" />
-                </div>
-                <h1 className="text-4xl font-display font-extrabold text-foreground">
-                  Your Tax Summary | 2025
-                </h1>
-                <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-                  Based on the top-tier 2025 fiscal projections, here is your estimated scenario for Federal, State, and Self-Employment taxes.
-                </p>
+            <div className="text-center mb-10">
+              <div className="inline-flex items-center justify-center p-3 bg-primary/5 rounded-2xl mb-4">
+                <PieChartIcon className="w-8 h-8 text-primary" />
               </div>
-            )}
+              <h1 className="text-4xl font-display font-extrabold text-foreground">
+                Your Tax Summary | 2025
+              </h1>
+              <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
+                Based on current published 2025 tax rules and the information you entered, here is your estimated federal, state, and self-employment tax picture.
+              </p>
+            </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* Main Highlight Card */}
@@ -278,7 +334,11 @@ export default function CalculatorForm() {
                     <ResultRow label="Federal Income Tax" value={result.estimatedTax} />
                     <ResultRow label="Self-Employment Tax" value={result.selfEmploymentTax} />
                     <ResultRow label="Estimated State Tax" value={result.stateIncomeTax} />
-                    <ResultRow label="Total Tax Credits Applied" value={result.totalCredits} isCredit />
+                    <ResultRow label="Nonrefundable Credits Applied" value={result.totalCredits} tone="credit" />
+                    {result.refundableCredits > 0 && (
+                      <ResultRow label="Refundable Credits Included" value={result.refundableCredits} tone="credit" />
+                    )}
+                    <ResultRow label="Payments & Withholding Entered" value={result.totalPayments} tone="payment" />
                   </div>
                   
                   <div className="pt-4 border-t-2 border-primary/20">
@@ -288,7 +348,7 @@ export default function CalculatorForm() {
                         <span className="text-xs text-primary/60 font-medium">Sum of all liabilities after credits</span>
                       </div>
                       <span className="text-2xl font-display font-extrabold text-primary">
-                        ${(result.estimatedTax + result.selfEmploymentTax + result.stateIncomeTax - result.totalCredits).toLocaleString()}
+                        ${(result.estimatedTax + result.selfEmploymentTax + result.stateIncomeTax).toLocaleString()}
                       </span>
                     </div>
                   </div>
@@ -301,7 +361,27 @@ export default function CalculatorForm() {
                   {!isEmbed && (
                     <Button 
                       onClick={() => {
-                        const embedCode = `<iframe src="${window.location.origin}/embed" width="100%" height="800px" frameborder="0"></iframe>`;
+                        const embedCode = `<iframe
+  id="tax-calculator-frame"
+  src="${window.location.origin}/embed"
+  width="100%"
+  height="760"
+  style="border:0; width:100%; display:block; background:#fff;"
+  loading="lazy"
+  allowfullscreen>
+</iframe>
+
+<script>
+  window.addEventListener("message", function (event) {
+    if (event.origin !== "${window.location.origin}") return;
+    if (!event.data || event.data.type !== "tax-calculator:resize") return;
+
+    var frame = document.getElementById("tax-calculator-frame");
+    if (!frame) return;
+
+    frame.style.height = event.data.height + "px";
+  });
+</script>`;
                         navigator.clipboard.writeText(embedCode);
                         alert("Embed code copied to clipboard!");
                       }} 
@@ -316,7 +396,7 @@ export default function CalculatorForm() {
                 <div className="mt-8 pt-6 border-t border-border/40 flex items-start gap-3">
                   <Info className="w-4 h-4 text-muted-foreground/60 flex-shrink-0 mt-0.5" />
                   <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic">
-                    Disclaimer: This tool provides estimates only based on projected 2025 tax laws. It does not constitute official tax advice. Actual tax liability depends on various individual factors and finalized IRS documentation. Always consult with a qualified tax professional.
+                    Disclaimer: This tool is an estimate based on published 2025 federal rules and a limited set of state calculations. It does not fully model local taxes, AMT, EITC, NIIT, or every phaseout and eligibility test. Always confirm final numbers with a qualified tax professional.
                   </p>
                 </div>
               </div>
@@ -373,12 +453,10 @@ export default function CalculatorForm() {
                 {/* STEP 1: Basic Info */}
                 {step === 1 && (
                   <div className="space-y-8">
-                    {!isEmbed && (
-                      <div>
-                        <h2 className="text-3xl font-display font-bold mb-2">Let's start with the basics</h2>
-                        <p className="text-muted-foreground">This helps us determine your standard deduction and eligibility.</p>
-                      </div>
-                    )}
+                    <div>
+                      <h2 className="text-3xl font-display font-bold mb-2">Let's start with the basics</h2>
+                      <p className="text-muted-foreground">This helps us determine your standard deduction and eligibility.</p>
+                    </div>
 
                     <div className="space-y-6">
                       <div>
@@ -407,13 +485,15 @@ export default function CalculatorForm() {
                         <div>
                           <Label htmlFor="state">Residency State</Label>
                           <Select id="state" {...register("state")} error={errors.state?.message}>
-                            <option value="Other">Other / No Income Tax State</option>
-                            <option value="California">California</option>
-                            <option value="New York">New York</option>
-                            <option value="Illinois">Illinois</option>
-                            <option value="Texas">Texas</option>
-                            <option value="Florida">Florida</option>
+                            {stateValues.map((state) => (
+                              <option key={state} value={state}>
+                                {stateOptionLabels[state]}
+                              </option>
+                            ))}
                           </Select>
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            State estimates are modeled for the listed states. Selecting Other keeps the federal estimate accurate but does not add a custom state tax formula.
+                          </p>
                         </div>
                         <div>
                           <Label htmlFor="age">Your Age</Label>
@@ -469,9 +549,15 @@ export default function CalculatorForm() {
                       )}
 
                       <div className="sm:col-span-2">
-                        <Label htmlFor="taxesWithheld">Federal Taxes Already Withheld</Label>
-                        <p className="text-xs text-muted-foreground mb-2">Check box 2 on your W-2.</p>
+                        <Label htmlFor="taxesWithheld">Federal Tax Withheld + Estimated Payments</Label>
+                        <p className="text-xs text-muted-foreground mb-2">Use W-2 box 2 plus any federal quarterly estimated payments you already made.</p>
                         <MoneyInput id="taxesWithheld" {...register("taxesWithheld")} />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <Label htmlFor="stateTaxesWithheld">State Tax Withheld / State Estimated Payments</Label>
+                        <p className="text-xs text-muted-foreground mb-2">Add any state withholding or state quarterly payments so your refund/amount owed estimate is closer to reality.</p>
+                        <MoneyInput id="stateTaxesWithheld" {...register("stateTaxesWithheld")} />
                       </div>
 
                       <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t border-border/50">
@@ -501,10 +587,13 @@ export default function CalculatorForm() {
                           <Label htmlFor="dividendIncome">Total Dividends</Label>
                           <MoneyInput id="dividendIncome" {...register("dividendIncome")} />
                         </div>
-                        <div>
-                          <Label htmlFor="qualifiedDividends">Qualified Dividends</Label>
-                          <MoneyInput id="qualifiedDividends" {...register("qualifiedDividends")} />
-                        </div>
+                      <div>
+                        <Label htmlFor="qualifiedDividends">Qualified Dividends</Label>
+                        <MoneyInput id="qualifiedDividends" {...register("qualifiedDividends")} />
+                        {errors.qualifiedDividends && (
+                          <p className="text-sm text-destructive mt-2">{errors.qualifiedDividends.message}</p>
+                        )}
+                      </div>
                         <div>
                           <Label htmlFor="capitalGains">Short-Term Cap. Gains</Label>
                           <MoneyInput id="capitalGains" {...register("capitalGains")} />
@@ -566,14 +655,17 @@ export default function CalculatorForm() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                       <div>
                         <Label htmlFor="childcareExpenses">Child & Dependent Care Expenses</Label>
+                        <p className="text-xs text-muted-foreground mb-2">Best for care costs tied to children under 13 or a dependent who cannot care for themselves.</p>
                         <MoneyInput id="childcareExpenses" {...register("childcareExpenses")} />
                       </div>
                       <div>
-                        <Label htmlFor="educationExpenses">College Tuition Paid</Label>
+                        <Label htmlFor="educationExpenses">Qualified Tuition Paid</Label>
+                        <p className="text-xs text-muted-foreground mb-2">Used for an American Opportunity Credit estimate. If this is for one student, enter that student&apos;s total eligible tuition paid.</p>
                         <MoneyInput id="educationExpenses" {...register("educationExpenses")} />
                       </div>
                       <div className="sm:col-span-2">
-                        <Label htmlFor="energyImprovements">Home Energy Improvements (Solar, etc.)</Label>
+                        <Label htmlFor="energyImprovements">Residential Clean Energy Costs</Label>
+                        <p className="text-xs text-muted-foreground mb-2">This estimate uses the 30% residential clean energy credit for eligible costs.</p>
                         <MoneyInput id="energyImprovements" {...register("energyImprovements")} />
                       </div>
                     </div>
@@ -627,12 +719,12 @@ function ResultRow({
   label, 
   value, 
   highlighted = false,
-  isCredit = false
+  tone = "default"
 }: { 
   label: string; 
   value: number; 
   highlighted?: boolean;
-  isCredit?: boolean;
+  tone?: "default" | "credit" | "payment";
 }) {
   return (
     <div className={cn(
@@ -645,9 +737,9 @@ function ResultRow({
       <span className={cn(
         "font-mono font-medium",
         highlighted && "font-bold text-primary",
-        isCredit && "text-green-600"
+        (tone === "credit" || tone === "payment") && "text-green-600"
       )}>
-        {isCredit ? "-" : ""}${value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+        {tone === "credit" ? "-" : ""}${value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
       </span>
     </div>
   );

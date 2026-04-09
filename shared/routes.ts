@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { insertTaxCalculationSchema, taxCalculations } from './schema';
+import {
+  calculationResultSchema,
+  insertTaxCalculationSchema,
+} from './schema';
 
 export const errorSchemas = {
   validation: z.object({
@@ -21,16 +24,9 @@ export const api = {
       path: '/api/calculate' as const,
       input: insertTaxCalculationSchema,
       responses: {
-        200: z.custom<typeof taxCalculations.$inferSelect>(),
+        200: calculationResultSchema,
         400: errorSchemas.validation,
       },
-    },
-    getRecent: {
-      method: 'GET' as const,
-      path: '/api/calculations' as const,
-      responses: {
-        200: z.array(z.custom<typeof taxCalculations.$inferSelect>()),
-      }
     }
   },
 };
@@ -49,4 +45,3 @@ export function buildUrl(path: string, params?: Record<string, string | number>)
 
 export type CalculateTaxInput = z.infer<typeof api.tax.calculate.input>;
 export type CalculateTaxResponse = z.infer<typeof api.tax.calculate.responses[200]>;
-export type CalculationsListResponse = z.infer<typeof api.tax.getRecent.responses[200]>;
