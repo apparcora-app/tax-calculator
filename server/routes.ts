@@ -11,6 +11,16 @@ type Bracket = {
   rate: number;
 };
 
+type EitcParameters = {
+  creditRate: number;
+  maxCredit: number;
+  phaseoutStartSingle: number;
+  phaseoutStartJoint: number;
+  phaseoutRate: number;
+  incomeLimitSingle: number;
+  incomeLimitJoint: number;
+};
+
 const SOCIAL_SECURITY_WAGE_BASE_2025 = 176100;
 const SELF_EMPLOYMENT_EARNINGS_FACTOR = 0.9235;
 const DEPENDENT_STANDARD_DEDUCTION_MINIMUM_2025 = 1350;
@@ -103,6 +113,61 @@ const ADDITIONAL_MEDICARE_THRESHOLDS: Record<FilingStatus, number> = {
   "Married Filing Separately": 125000,
   "Head of Household": 200000,
   "Qualifying Surviving Spouse": 200000,
+};
+
+const NET_INVESTMENT_INCOME_THRESHOLDS: Record<FilingStatus, number> = {
+  Single: 200000,
+  "Married Filing Jointly": 250000,
+  "Married Filing Separately": 125000,
+  "Head of Household": 200000,
+  "Qualifying Surviving Spouse": 250000,
+};
+
+const AMT_EXEMPTIONS_2025: Record<FilingStatus, { exemption: number; phaseoutStart: number }> = {
+  Single: { exemption: 88900, phaseoutStart: 626350 },
+  "Married Filing Jointly": { exemption: 137000, phaseoutStart: 1252700 },
+  "Married Filing Separately": { exemption: 68500, phaseoutStart: 626350 },
+  "Head of Household": { exemption: 88900, phaseoutStart: 626350 },
+  "Qualifying Surviving Spouse": { exemption: 137000, phaseoutStart: 1252700 },
+};
+
+const EITC_PARAMETERS_2025: Record<0 | 1 | 2 | 3, EitcParameters> = {
+  0: {
+    creditRate: 0.0765,
+    maxCredit: 649,
+    phaseoutStartSingle: 10620,
+    phaseoutStartJoint: 17740,
+    phaseoutRate: 0.0765,
+    incomeLimitSingle: 19104,
+    incomeLimitJoint: 26214,
+  },
+  1: {
+    creditRate: 0.34,
+    maxCredit: 4328,
+    phaseoutStartSingle: 23350,
+    phaseoutStartJoint: 30470,
+    phaseoutRate: 0.1598,
+    incomeLimitSingle: 50434,
+    incomeLimitJoint: 57554,
+  },
+  2: {
+    creditRate: 0.4,
+    maxCredit: 7152,
+    phaseoutStartSingle: 23350,
+    phaseoutStartJoint: 30470,
+    phaseoutRate: 0.2106,
+    incomeLimitSingle: 57310,
+    incomeLimitJoint: 64430,
+  },
+  3: {
+    creditRate: 0.45,
+    maxCredit: 8046,
+    phaseoutStartSingle: 23350,
+    phaseoutStartJoint: 30470,
+    phaseoutRate: 0.2106,
+    incomeLimitSingle: 61555,
+    incomeLimitJoint: 68675,
+  },
 };
 
 function getWorkplaceRetirementLimit(age: number) {
@@ -268,12 +333,87 @@ function calculateLifetimeLearningCredit(expenses: number, adjustedGrossIncome: 
   return applyLinearPhaseout(credit, adjustedGrossIncome, phaseout.start, phaseout.end);
 }
 
+function calculateEarnedIncomeTaxCredit(
+  input: CalculateTaxRequest,
+  adjustedGrossIncome: number,
+  earnedIncome: number,
+  investmentIncome: number,
+) {
+  if (input.canBeClaimedAsDependent || input.filingStatus === "Married Filing Separately") {
+    return 0;
+  }
+
+  if (investmentIncome > 11950 || earnedIncome <= 0) {
+    return 0;
+  }
+
+  const qualifyingChildren = Math.min(3, input.dependentsUnder17 + input.dependentsInSchool);
+  if (qualifyingChildren === 0 && (input.age < 25 || input.age >= 65)) {
+    return 0;
+  }
+
+  const parameters = EITC_PARAMETERS_2025[qualifyingChildren as 0 | 1 | 2 | 3];
+  const incomeLimit = input.filingStatus === "Married Filing Jointly"
+    ? parameters.incomeLimitJoint
+    : parameters.incomeLimitSingle;
+
+  const lookupIncome = Math.max(adjustedGrossIncome, earnedIncome);
+  if (lookupIncome >= incomeLimit) {
+    return 0;
+  }
+
+  const phaseoutStart = input.filingStatus === "Married Filing Jointly"
+    ? parameters.phaseoutStartJoint
+    : parameters.phaseoutStartSingle;
+
+  const phasedInCredit = Math.min(parameters.maxCredit, earnedIncome * parameters.creditRate);
+  const phaseoutReduction = Math.max(0, lookupIncome - phaseoutStart) * parameters.phaseoutRate;
+
+  return Math.max(0, phasedInCredit - phaseoutReduction);
+}
+
+function calculateAlternativeMinimumTax(
+  filingStatus: FilingStatus,
+  adjustedGrossIncome: number,
+  amtAllowedDeductions: number,
+) {
+  const amti = clampToZero(adjustedGrossIncome - amtAllowedDeductions);
+  const { exemption, phaseoutStart } = AMT_EXEMPTIONS_2025[filingStatus];
+  const exemptionReduction = Math.max(0, amti - phaseoutStart) * 0.25;
+  const remainingExemption = Math.max(0, exemption - exemptionReduction);
+  const taxableAmt = Math.max(0, amti - remainingExemption);
+  const firstBracketCap = filingStatus === "Married Filing Separately" ? 119550 : 239100;
+  const tentativeMinimumTax =
+    Math.min(taxableAmt, firstBracketCap) * 0.26 +
+    Math.max(0, taxableAmt - firstBracketCap) * 0.28;
+
+  return {
+    amti,
+    tentativeMinimumTax,
+    alternativeMinimumTax: tentativeMinimumTax,
+  };
+}
+
+function calculateNetInvestmentIncomeTax(
+  filingStatus: FilingStatus,
+  adjustedGrossIncome: number,
+  netInvestmentIncome: number,
+) {
+  const threshold = NET_INVESTMENT_INCOME_THRESHOLDS[filingStatus];
+  const taxableBase = Math.min(
+    Math.max(0, netInvestmentIncome),
+    Math.max(0, adjustedGrossIncome - threshold),
+  );
+
+  return taxableBase * 0.038;
+}
+
 function calculateStateIncomeTax(state: CalculateTaxRequest["state"], adjustedGrossIncome: number, taxableIncome: number) {
   const flatTaxBase = clampToZero(adjustedGrossIncome);
   const progressiveTaxBase = clampToZero(taxableIncome);
 
   if (state === "California") {
-    return calculateTaxFromBrackets(progressiveTaxBase, [
+    return { tax: calculateTaxFromBrackets(progressiveTaxBase, [
       { threshold: 10412, rate: 0.01 },
       { threshold: 24684, rate: 0.02 },
       { threshold: 38959, rate: 0.04 },
@@ -283,11 +423,11 @@ function calculateStateIncomeTax(state: CalculateTaxRequest["state"], adjustedGr
       { threshold: 418961, rate: 0.103 },
       { threshold: 698271, rate: 0.113 },
       { threshold: Number.POSITIVE_INFINITY, rate: 0.123 },
-    ]);
+    ]), supported: true };
   }
 
   if (state === "New York") {
-    return calculateTaxFromBrackets(progressiveTaxBase, [
+    return { tax: calculateTaxFromBrackets(progressiveTaxBase, [
       { threshold: 8500, rate: 0.04 },
       { threshold: 11700, rate: 0.045 },
       { threshold: 13900, rate: 0.0525 },
@@ -296,34 +436,66 @@ function calculateStateIncomeTax(state: CalculateTaxRequest["state"], adjustedGr
       { threshold: 215400, rate: 0.0685 },
       { threshold: 1077550, rate: 0.0965 },
       { threshold: Number.POSITIVE_INFINITY, rate: 0.103 },
-    ]);
+    ]), supported: true };
+  }
+
+  if (state === "Massachusetts") {
+    const surtaxThreshold = 1083150;
+    const surtax = Math.max(0, flatTaxBase - surtaxThreshold) * 0.04;
+    return { tax: (flatTaxBase * 0.05) + surtax, supported: true };
   }
 
   if (state === "Arizona") {
-    return flatTaxBase * 0.025;
+    return { tax: flatTaxBase * 0.025, supported: true };
   }
 
   if (state === "Colorado") {
-    return flatTaxBase * 0.044;
+    return { tax: flatTaxBase * 0.044, supported: true };
+  }
+
+  if (state === "Georgia") {
+    return { tax: flatTaxBase * 0.0519, supported: true };
   }
 
   if (state === "Illinois") {
-    return flatTaxBase * 0.0495;
+    return { tax: flatTaxBase * 0.0495, supported: true };
+  }
+
+  if (state === "Kentucky") {
+    return { tax: flatTaxBase * 0.04, supported: true };
   }
 
   if (state === "Michigan") {
-    return flatTaxBase * 0.0425;
+    return { tax: flatTaxBase * 0.0425, supported: true };
   }
 
   if (state === "North Carolina") {
-    return flatTaxBase * 0.0425;
+    return { tax: flatTaxBase * 0.0425, supported: true };
   }
 
   if (state === "Pennsylvania") {
-    return flatTaxBase * 0.0307;
+    return { tax: flatTaxBase * 0.0307, supported: true };
   }
 
-  return 0;
+  if (state === "Utah") {
+    return { tax: flatTaxBase * 0.045, supported: true };
+  }
+
+  if (
+    state === "Alaska" ||
+    state === "Florida" ||
+    state === "Nevada" ||
+    state === "New Hampshire" ||
+    state === "South Dakota" ||
+    state === "Tennessee" ||
+    state === "Texas" ||
+    state === "Washington" ||
+    state === "Wyoming"
+  ) {
+    return { tax: 0, supported: true };
+  }
+
+  return { tax: 0, supported: false };
 }
 
 export function calculateTax(input: CalculateTaxRequest): CalculateTaxResponse {
@@ -355,6 +527,11 @@ export function calculateTax(input: CalculateTaxRequest): CalculateTaxResponse {
     input.capitalGains +
     input.longTermCapitalGains +
     input.otherIncome;
+  const investmentIncome =
+    input.interestIncome +
+    input.dividendIncome +
+    input.capitalGains +
+    input.longTermCapitalGains;
 
   const compensation = clampToZero(input.wages + netBusinessProfit);
   const iraContributionCap = input.age >= 50 ? 8000 : 7000;
@@ -385,6 +562,10 @@ export function calculateTax(input: CalculateTaxRequest): CalculateTaxResponse {
   const itemizedDeductions =
     medicalDeduction +
     saltDeduction +
+    input.mortgageInterest +
+    charitableContributions;
+  const amtAllowedDeductions =
+    medicalDeduction +
     input.mortgageInterest +
     charitableContributions;
 
@@ -432,6 +613,15 @@ export function calculateTax(input: CalculateTaxRequest): CalculateTaxResponse {
 
     federalTaxBeforeCredits += (fifteenRateIncome * 0.15) + (twentyRateIncome * 0.2);
   }
+  const regularFederalTaxBeforeCredits = federalTaxBeforeCredits;
+
+  const { tentativeMinimumTax } = calculateAlternativeMinimumTax(
+    filingStatus,
+    adjustedGrossIncome,
+    amtAllowedDeductions,
+  );
+  const alternativeMinimumTax = Math.max(0, tentativeMinimumTax - regularFederalTaxBeforeCredits);
+  federalTaxBeforeCredits = Math.max(federalTaxBeforeCredits, tentativeMinimumTax);
 
   const otherDependents = input.dependentsInSchool + input.otherDependents;
   const childTaxCreditTotal = calculateChildTaxCredit(
@@ -500,12 +690,32 @@ export function calculateTax(input: CalculateTaxRequest): CalculateTaxResponse {
     input.dependentsUnder17,
     remainingChildTaxCredit,
   ) + refundableEducationCredit;
+  const earnedIncomeTaxCredit = calculateEarnedIncomeTaxCredit(
+    input,
+    adjustedGrossIncome,
+    earnedIncomeForActc,
+    investmentIncome,
+  );
+  const totalRefundableCredits = refundableCredits + earnedIncomeTaxCredit;
 
   const estimatedTax = Math.max(0, federalTaxBeforeCredits - totalCredits);
-  const stateIncomeTax = calculateStateIncomeTax(input.state, adjustedGrossIncome, taxableIncome);
+  const netInvestmentIncomeTax = calculateNetInvestmentIncomeTax(
+    filingStatus,
+    adjustedGrossIncome,
+    investmentIncome,
+  );
+  const { tax: stateIncomeTax, supported: stateEstimateSupported } = calculateStateIncomeTax(
+    input.state,
+    adjustedGrossIncome,
+    taxableIncome,
+  );
   const totalPayments = input.taxesWithheld + input.stateTaxesWithheld;
-  const totalLiability = estimatedTax + selfEmploymentTax + stateIncomeTax;
-  const refundOrOwe = totalPayments + refundableCredits - totalLiability;
+  const totalLiability =
+    estimatedTax +
+    selfEmploymentTax +
+    stateIncomeTax +
+    netInvestmentIncomeTax;
+  const refundOrOwe = totalPayments + totalRefundableCredits - totalLiability;
   const effectiveTaxRate = totalIncome > 0 ? (totalLiability / totalIncome) * 100 : 0;
 
   return {
@@ -520,12 +730,16 @@ export function calculateTax(input: CalculateTaxRequest): CalculateTaxResponse {
     estimatedTax: Math.round(estimatedTax),
     selfEmploymentTax: Math.round(selfEmploymentTax),
     stateIncomeTax: Math.round(stateIncomeTax),
+    alternativeMinimumTax: Math.round(alternativeMinimumTax),
+    netInvestmentIncomeTax: Math.round(netInvestmentIncomeTax),
     totalCredits: Math.round(totalCredits),
-    refundableCredits: Math.round(refundableCredits),
+    earnedIncomeTaxCredit: Math.round(earnedIncomeTaxCredit),
+    refundableCredits: Math.round(totalRefundableCredits),
     totalPayments: Math.round(totalPayments),
     totalLiability: Math.round(totalLiability),
     refundOrOwe: Math.round(refundOrOwe),
     effectiveTaxRate: Math.round(effectiveTaxRate * 100) / 100,
+    stateEstimateSupported,
   };
 }
 

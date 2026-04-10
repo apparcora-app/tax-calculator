@@ -12,16 +12,27 @@ export const filingStatusValues = [
 
 export const stateValues = [
   "Other",
+  "Alaska",
   "Arizona",
   "California",
   "Colorado",
   "Florida",
+  "Georgia",
   "Illinois",
+  "Kentucky",
+  "Massachusetts",
   "Michigan",
+  "Nevada",
+  "New Hampshire",
   "New York",
   "North Carolina",
   "Pennsylvania",
+  "South Dakota",
+  "Tennessee",
   "Texas",
+  "Utah",
+  "Washington",
+  "Wyoming",
 ] as const;
 
 const nonNegativeInt = (schema: z.ZodNumber) => schema.int().min(0);
@@ -85,7 +96,10 @@ export const taxCalculations = pgTable("tax_calculations", {
   estimatedTax: integer("estimated_tax").notNull().default(0),
   selfEmploymentTax: integer("self_employment_tax").notNull().default(0),
   stateIncomeTax: integer("state_income_tax").notNull().default(0),
+  alternativeMinimumTax: integer("alternative_minimum_tax").notNull().default(0),
+  netInvestmentIncomeTax: integer("net_investment_income_tax").notNull().default(0),
   totalCredits: integer("total_credits").notNull().default(0),
+  earnedIncomeTaxCredit: integer("earned_income_tax_credit").notNull().default(0),
   refundableCredits: integer("refundable_credits").notNull().default(0),
   totalPayments: integer("total_payments").notNull().default(0),
   refundOrOwe: integer("refund_or_owe").notNull().default(0),
@@ -145,7 +159,10 @@ export const insertTaxCalculationSchema = createInsertSchema(taxCalculations, {
   estimatedTax: true,
   selfEmploymentTax: true,
   stateIncomeTax: true,
+  alternativeMinimumTax: true,
+  netInvestmentIncomeTax: true,
   totalCredits: true,
+  earnedIncomeTaxCredit: true,
   refundableCredits: true,
   totalPayments: true,
   refundOrOwe: true,
@@ -190,12 +207,16 @@ export const calculationResultSchema = z.object({
   estimatedTax: z.number().int().min(0),
   selfEmploymentTax: z.number().int().min(0),
   stateIncomeTax: z.number().int().min(0),
+  alternativeMinimumTax: z.number().int().min(0),
+  netInvestmentIncomeTax: z.number().int().min(0),
   totalCredits: z.number().int().min(0),
+  earnedIncomeTaxCredit: z.number().int().min(0),
   refundableCredits: z.number().int().min(0),
   totalPayments: z.number().int().min(0),
   totalLiability: z.number().int().min(0),
   refundOrOwe: z.number().int(),
   effectiveTaxRate: z.number().min(0),
+  stateEstimateSupported: z.boolean(),
 });
 
 export type TaxCalculation = typeof taxCalculations.$inferSelect;
@@ -215,12 +236,16 @@ export type CalculationResult = {
   estimatedTax: number;
   selfEmploymentTax: number;
   stateIncomeTax: number;
+  alternativeMinimumTax: number;
+  netInvestmentIncomeTax: number;
   totalCredits: number;
+  earnedIncomeTaxCredit: number;
   refundableCredits: number;
   totalPayments: number;
   totalLiability: number;
   refundOrOwe: number; // positive = refund, negative = owe
   effectiveTaxRate: number;
+  stateEstimateSupported: boolean;
 };
 
 export type CalculateTaxResponse = z.infer<typeof calculationResultSchema>;

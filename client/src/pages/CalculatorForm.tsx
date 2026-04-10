@@ -135,16 +135,27 @@ const defaultValues: FormValues = {
 
 const stateOptionLabels: Record<typeof stateValues[number], string> = {
   Other: "Other / Unsupported state estimate",
+  Alaska: "Alaska",
   Arizona: "Arizona",
   California: "California",
   Colorado: "Colorado",
   Florida: "Florida",
+  Georgia: "Georgia",
   Illinois: "Illinois",
+  Kentucky: "Kentucky",
+  Massachusetts: "Massachusetts",
   Michigan: "Michigan",
+  Nevada: "Nevada",
+  "New Hampshire": "New Hampshire",
   "New York": "New York",
   "North Carolina": "North Carolina",
   Pennsylvania: "Pennsylvania",
+  "South Dakota": "South Dakota",
+  Tennessee: "Tennessee",
   Texas: "Texas",
+  Utah: "Utah",
+  Washington: "Washington",
+  Wyoming: "Wyoming",
 };
 
 const yesNoOptions = [
@@ -278,7 +289,7 @@ export default function CalculatorForm() {
                 Your Tax Summary | 2025
               </h1>
               <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-                Based on a more complete 2025 tax model with retirement, education, property tax, and withholding inputs, here is your estimated federal, state, and self-employment tax picture.
+                Based on a more complete 2025 tax model with retirement, education, AMT, NIIT, EITC, property tax, and withholding inputs, here is your estimated federal, state, and self-employment tax picture.
               </p>
             </div>
 
@@ -367,13 +378,27 @@ export default function CalculatorForm() {
                     <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-4">Tax Liability Breakout</h4>
                     <ResultRow label="Federal Tax Before Credits" value={result.federalTaxBeforeCredits} />
                     <ResultRow label="Federal Income Tax" value={result.estimatedTax} />
+                    {result.alternativeMinimumTax > 0 && (
+                      <ResultRow label="Alternative Minimum Tax" value={result.alternativeMinimumTax} />
+                    )}
+                    {result.netInvestmentIncomeTax > 0 && (
+                      <ResultRow label="Net Investment Income Tax" value={result.netInvestmentIncomeTax} />
+                    )}
                     <ResultRow label="Self-Employment Tax" value={result.selfEmploymentTax} />
                     <ResultRow label="Estimated State Tax" value={result.stateIncomeTax} />
                     <ResultRow label="Nonrefundable Credits Applied" value={result.totalCredits} tone="credit" />
+                    {result.earnedIncomeTaxCredit > 0 && (
+                      <ResultRow label="Earned Income Tax Credit" value={result.earnedIncomeTaxCredit} tone="payment" />
+                    )}
                     {result.refundableCredits > 0 && (
-                      <ResultRow label="Refundable Credits Included" value={result.refundableCredits} tone="credit" />
+                      <ResultRow label="Total Refundable Credits" value={result.refundableCredits} tone="payment" />
                     )}
                     <ResultRow label="Payments & Withholding Entered" value={result.totalPayments} tone="payment" />
+                    {!result.stateEstimateSupported && (
+                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                        Your selected state is not fully modeled yet, so this result is using a federal-only estimate for state tax.
+                      </p>
+                    )}
                   </div>
                   
                   <div className="pt-4 border-t-2 border-primary/20">
@@ -442,7 +467,7 @@ export default function CalculatorForm() {
                 <div className="mt-8 pt-6 border-t border-border/40 flex items-start gap-3">
                   <Info className="w-4 h-4 text-muted-foreground/60 flex-shrink-0 mt-0.5" />
                   <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic">
-                    Disclaimer: This tool is a detailed estimate based on published 2025 federal rules and a limited set of state calculations. It still does not fully model every edge case, including EITC, AMT, NIIT, all local taxes, and every education or alimony eligibility rule. Always confirm final numbers with a qualified tax professional.
+                    Disclaimer: This tool is a detailed estimate based on published 2025 federal rules and an expanded but not universal set of state calculations. It now includes EITC, AMT, and NIIT estimates, but it still cannot model every edge case, local tax, or eligibility rule. Always confirm final numbers with a qualified tax professional.
                   </p>
                 </div>
               </div>
@@ -538,7 +563,7 @@ export default function CalculatorForm() {
                             ))}
                           </Select>
                           <p className="mt-2 text-xs text-muted-foreground">
-                            State estimates are modeled for the listed states. Selecting Other keeps the federal estimate accurate but does not add a custom state tax formula.
+                            States with no income tax and several flat-tax states are now modeled directly, along with California, New York, and Massachusetts. Selecting Other keeps the federal estimate accurate but does not add a custom state tax formula.
                           </p>
                         </div>
                         <div>
