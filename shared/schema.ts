@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, numeric, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema, createSelectSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -34,6 +34,10 @@ export const taxCalculations = pgTable("tax_calculations", {
   filingStatus: text("filing_status").notNull(),
   state: text("state").notNull().default("Other"),
   age: integer("age").notNull(),
+  spouseAge: integer("spouse_age").notNull().default(0),
+  canBeClaimedAsDependent: boolean("can_be_claimed_as_dependent").notNull().default(false),
+  isFirstFourYearsCollege: boolean("is_first_four_years_college").notNull().default(false),
+  legacyAlimonyAgreement: boolean("legacy_alimony_agreement").notNull().default(false),
   dependentsUnder17: integer("dependents_under_17").notNull().default(0),
   dependentsInSchool: integer("dependents_in_school").notNull().default(0),
   otherDependents: integer("other_dependents").notNull().default(0),
@@ -45,6 +49,7 @@ export const taxCalculations = pgTable("tax_calculations", {
   businessExpenses: integer("business_expenses").notNull().default(0),
   taxesWithheld: integer("taxes_withheld").notNull().default(0),
   stateTaxesWithheld: integer("state_taxes_withheld").notNull().default(0),
+  workplaceRetirementContributions: integer("workplace_retirement_contributions").notNull().default(0),
   interestIncome: integer("interest_income").notNull().default(0),
   dividendIncome: integer("dividend_income").notNull().default(0),
   qualifiedDividends: integer("qualified_dividends").notNull().default(0),
@@ -57,8 +62,12 @@ export const taxCalculations = pgTable("tax_calculations", {
   studentLoanInterest: integer("student_loan_interest").notNull().default(0),
   medicalExpenses: integer("medical_expenses").notNull().default(0),
   stateLocalTaxes: integer("state_local_taxes").notNull().default(0),
+  propertyTaxes: integer("property_taxes").notNull().default(0),
   mortgageInterest: integer("mortgage_interest").notNull().default(0),
   charitableContributions: integer("charitable_contributions").notNull().default(0),
+  cashDonations: integer("cash_donations").notNull().default(0),
+  nonCashDonations: integer("non_cash_donations").notNull().default(0),
+  alimonyPayments: integer("alimony_payments").notNull().default(0),
 
   // Credits
   childcareExpenses: integer("childcare_expenses").notNull().default(0),
@@ -68,8 +77,11 @@ export const taxCalculations = pgTable("tax_calculations", {
   // Results
   totalIncome: integer("total_income").notNull().default(0),
   adjustedGrossIncome: integer("adjusted_gross_income").notNull().default(0),
+  totalAdjustments: integer("total_adjustments").notNull().default(0),
+  itemizedDeductions: integer("itemized_deductions").notNull().default(0),
   standardOrItemizedDeduction: integer("standard_or_itemized_deduction").notNull().default(0),
   taxableIncome: integer("taxable_income").notNull().default(0),
+  federalTaxBeforeCredits: integer("federal_tax_before_credits").notNull().default(0),
   estimatedTax: integer("estimated_tax").notNull().default(0),
   selfEmploymentTax: integer("self_employment_tax").notNull().default(0),
   stateIncomeTax: integer("state_income_tax").notNull().default(0),
@@ -77,6 +89,7 @@ export const taxCalculations = pgTable("tax_calculations", {
   refundableCredits: integer("refundable_credits").notNull().default(0),
   totalPayments: integer("total_payments").notNull().default(0),
   refundOrOwe: integer("refund_or_owe").notNull().default(0),
+  effectiveTaxRateBasisPoints: integer("effective_tax_rate_basis_points").notNull().default(0),
 
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -86,6 +99,10 @@ export const insertTaxCalculationSchema = createInsertSchema(taxCalculations, {
   filingStatus: z.enum(filingStatusValues),
   state: z.enum(stateValues),
   age: (schema) => schema.int().min(1).max(120),
+  spouseAge: (schema) => schema.int().min(0).max(120),
+  canBeClaimedAsDependent: z.boolean(),
+  isFirstFourYearsCollege: z.boolean(),
+  legacyAlimonyAgreement: z.boolean(),
   dependentsUnder17: nonNegativeInt,
   dependentsInSchool: nonNegativeInt,
   otherDependents: nonNegativeInt,
@@ -95,6 +112,7 @@ export const insertTaxCalculationSchema = createInsertSchema(taxCalculations, {
   businessExpenses: nonNegativeInt,
   taxesWithheld: nonNegativeInt,
   stateTaxesWithheld: nonNegativeInt,
+  workplaceRetirementContributions: nonNegativeInt,
   interestIncome: nonNegativeInt,
   dividendIncome: nonNegativeInt,
   qualifiedDividends: nonNegativeInt,
@@ -105,8 +123,12 @@ export const insertTaxCalculationSchema = createInsertSchema(taxCalculations, {
   studentLoanInterest: nonNegativeInt,
   medicalExpenses: nonNegativeInt,
   stateLocalTaxes: nonNegativeInt,
+  propertyTaxes: nonNegativeInt,
   mortgageInterest: nonNegativeInt,
   charitableContributions: nonNegativeInt,
+  cashDonations: nonNegativeInt,
+  nonCashDonations: nonNegativeInt,
+  alimonyPayments: nonNegativeInt,
   childcareExpenses: nonNegativeInt,
   energyImprovements: nonNegativeInt,
   educationExpenses: nonNegativeInt,
@@ -115,21 +137,41 @@ export const insertTaxCalculationSchema = createInsertSchema(taxCalculations, {
   createdAt: true,
   totalIncome: true,
   adjustedGrossIncome: true,
+  totalAdjustments: true,
+  itemizedDeductions: true,
   standardOrItemizedDeduction: true,
   taxableIncome: true,
+  federalTaxBeforeCredits: true,
   estimatedTax: true,
   selfEmploymentTax: true,
   stateIncomeTax: true,
   totalCredits: true,
   refundableCredits: true,
   totalPayments: true,
-  refundOrOwe: true
+  refundOrOwe: true,
+  effectiveTaxRateBasisPoints: true,
 }).superRefine((value, ctx) => {
   if (value.qualifiedDividends > value.dividendIncome) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Qualified dividends cannot exceed total dividends",
       path: ["qualifiedDividends"],
+    });
+  }
+
+  if (value.filingStatus === "Married Filing Jointly" && value.spouseAge < 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Spouse age is required for a joint return",
+      path: ["spouseAge"],
+    });
+  }
+
+  if (value.legacyAlimonyAgreement && value.alimonyPayments === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Enter the alimony paid for legacy agreements",
+      path: ["alimonyPayments"],
     });
   }
 });
@@ -139,15 +181,21 @@ export const taxCalculationSelectSchema = createSelectSchema(taxCalculations);
 export const calculationResultSchema = z.object({
   totalIncome: z.number().int().min(0),
   adjustedGrossIncome: z.number().int().min(0),
+  totalAdjustments: z.number().int().min(0),
+  itemizedDeductions: z.number().int().min(0),
+  deductionType: z.enum(["Standard", "Itemized"]),
   standardOrItemizedDeduction: z.number().int().min(0),
   taxableIncome: z.number().int().min(0),
+  federalTaxBeforeCredits: z.number().int().min(0),
   estimatedTax: z.number().int().min(0),
   selfEmploymentTax: z.number().int().min(0),
   stateIncomeTax: z.number().int().min(0),
   totalCredits: z.number().int().min(0),
   refundableCredits: z.number().int().min(0),
   totalPayments: z.number().int().min(0),
+  totalLiability: z.number().int().min(0),
   refundOrOwe: z.number().int(),
+  effectiveTaxRate: z.number().min(0),
 });
 
 export type TaxCalculation = typeof taxCalculations.$inferSelect;
@@ -158,15 +206,21 @@ export type CalculateTaxRequest = InsertTaxCalculation;
 export type CalculationResult = {
   totalIncome: number;
   adjustedGrossIncome: number;
+  totalAdjustments: number;
+  itemizedDeductions: number;
+  deductionType: "Standard" | "Itemized";
   standardOrItemizedDeduction: number;
   taxableIncome: number;
+  federalTaxBeforeCredits: number;
   estimatedTax: number;
   selfEmploymentTax: number;
   stateIncomeTax: number;
   totalCredits: number;
   refundableCredits: number;
   totalPayments: number;
+  totalLiability: number;
   refundOrOwe: number; // positive = refund, negative = owe
+  effectiveTaxRate: number;
 };
 
 export type CalculateTaxResponse = z.infer<typeof calculationResultSchema>;

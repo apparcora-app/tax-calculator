@@ -13,6 +13,9 @@ type Bracket = {
 
 const SOCIAL_SECURITY_WAGE_BASE_2025 = 176100;
 const SELF_EMPLOYMENT_EARNINGS_FACTOR = 0.9235;
+const DEPENDENT_STANDARD_DEDUCTION_MINIMUM_2025 = 1350;
+const DEPENDENT_STANDARD_DEDUCTION_ADDON_2025 = 450;
+const WORKPLACE_RETIREMENT_DEFERRAL_LIMIT_2025 = 23500;
 
 const STANDARD_DEDUCTION_2025: Record<FilingStatus, number> = {
   Single: 15750,
@@ -102,6 +105,18 @@ const ADDITIONAL_MEDICARE_THRESHOLDS: Record<FilingStatus, number> = {
   "Qualifying Surviving Spouse": 200000,
 };
 
+function getWorkplaceRetirementLimit(age: number) {
+  if (age >= 60 && age <= 63) {
+    return WORKPLACE_RETIREMENT_DEFERRAL_LIMIT_2025 + 11250;
+  }
+
+  if (age >= 50) {
+    return WORKPLACE_RETIREMENT_DEFERRAL_LIMIT_2025 + 7500;
+  }
+
+  return WORKPLACE_RETIREMENT_DEFERRAL_LIMIT_2025;
+}
+
 function clampToZero(value: number) {
   return Math.max(0, value);
 }
@@ -162,6 +177,21 @@ function calculateSaltDeduction(stateLocalTaxes: number, filingStatus: FilingSta
   }
 
   return Math.min(stateLocalTaxes, deductionCap);
+}
+
+function calculateDependentStandardDeduction(earnedIncome: number, regularStandardDeduction: number, additionalStandardDeduction: number) {
+  const baseDeduction = Math.max(
+    DEPENDENT_STANDARD_DEDUCTION_MINIMUM_2025,
+    Math.min(
+      Math.max(0, earnedIncome),
+      regularStandardDeduction - DEPENDENT_STANDARD_DEDUCTION_ADDON_2025,
+    ) + DEPENDENT_STANDARD_DEDUCTION_ADDON_2025,
+  );
+
+  return Math.min(
+    regularStandardDeduction + additionalStandardDeduction,
+    baseDeduction + additionalStandardDeduction,
+  );
 }
 
 function calculateChildTaxCredit(adjustedGrossIncome: number, filingStatus: FilingStatus, qualifyingChildren: number, otherDependents: number) {
@@ -228,6 +258,16 @@ function calculateAmericanOpportunityCredit(expenses: number, students: number, 
   return applyLinearPhaseout(credit, adjustedGrossIncome, phaseout.start, phaseout.end);
 }
 
+function calculateLifetimeLearningCredit(expenses: number, adjustedGrossIncome: number, filingStatus: FilingStatus) {
+  const phaseout = AOTC_PHASEOUTS_2025[filingStatus];
+  if (expenses <= 0 || !phaseout) {
+    return 0;
+  }
+
+  const credit = Math.min(expenses, 10000) * 0.2;
+  return applyLinearPhaseout(credit, adjustedGrossIncome, phaseout.start, phaseout.end);
+}
+
 function calculateStateIncomeTax(state: CalculateTaxRequest["state"], adjustedGrossIncome: number, taxableIncome: number) {
   const flatTaxBase = clampToZero(adjustedGrossIncome);
   const progressiveTaxBase = clampToZero(taxableIncome);
@@ -289,6 +329,15 @@ function calculateStateIncomeTax(state: CalculateTaxRequest["state"], adjustedGr
 export function calculateTax(input: CalculateTaxRequest): CalculateTaxResponse {
   const filingStatus = input.filingStatus;
   const netBusinessProfit = clampToZero(input.businessIncome - input.businessExpenses);
+  const workplaceRetirementCap = getWorkplaceRetirementLimit(input.age) + (
+    filingStatus === "Married Filing Jointly" ? getWorkplaceRetirementLimit(input.spouseAge) : 0
+  );
+  const workplaceRetirementDeduction = Math.min(
+    input.workplaceRetirementContributions,
+    workplaceRetirementCap,
+    input.wages + input.spouseWages,
+  );
+  const wageIncomeAfterDeferrals = clampToZero((input.wages + input.spouseWages) - workplaceRetirementDeduction);
   const selfEmploymentNetEarnings = netBusinessProfit * SELF_EMPLOYMENT_EARNINGS_FACTOR;
   const selfEmploymentSocialSecurityBase = Math.max(0, SOCIAL_SECURITY_WAGE_BASE_2025 - input.wages);
   const socialSecurityTax = Math.min(selfEmploymentNetEarnings, selfEmploymentSocialSecurityBase) * 0.124;
@@ -299,8 +348,7 @@ export function calculateTax(input: CalculateTaxRequest): CalculateTaxResponse {
   const selfEmploymentTax = socialSecurityTax + medicareTax + additionalMedicareTax;
 
   const totalIncome =
-    input.wages +
-    input.spouseWages +
+    wageIncomeAfterDeferrals +
     netBusinessProfit +
     input.interestIncome +
     input.dividendIncome +
@@ -308,11 +356,14 @@ export function calculateTax(input: CalculateTaxRequest): CalculateTaxResponse {
     input.longTermCapitalGains +
     input.otherIncome;
 
-  const compensation = input.wages + netBusinessProfit;
+  const compensation = clampToZero(input.wages + netBusinessProfit);
   const iraContributionCap = input.age >= 50 ? 8000 : 7000;
   const iraDeduction = Math.min(input.iraContributions, iraContributionCap, compensation);
+  const alimonyDeduction = input.legacyAlimonyAgreement ? input.alimonyPayments : 0;
 
-  const provisionalAdjustedGrossIncome = clampToZero(totalIncome - iraDeduction - deductibleSelfEmploymentTax);
+  const provisionalAdjustedGrossIncome = clampToZero(
+    totalIncome - iraDeduction - deductibleSelfEmploymentTax - alimonyDeduction,
+  );
   const studentLoanDeduction = calculateStudentLoanDeduction(
     input.studentLoanInterest,
     filingStatus,
@@ -320,29 +371,44 @@ export function calculateTax(input: CalculateTaxRequest): CalculateTaxResponse {
   );
 
   const adjustedGrossIncome = clampToZero(
-    totalIncome - iraDeduction - deductibleSelfEmploymentTax - studentLoanDeduction,
+    totalIncome - iraDeduction - deductibleSelfEmploymentTax - studentLoanDeduction - alimonyDeduction,
   );
+  const totalAdjustments = iraDeduction + deductibleSelfEmploymentTax + studentLoanDeduction + alimonyDeduction;
 
   const medicalDeduction = Math.max(0, input.medicalExpenses - (adjustedGrossIncome * 0.075));
-  const saltDeduction = calculateSaltDeduction(input.stateLocalTaxes, filingStatus, adjustedGrossIncome);
+  const saltDeduction = calculateSaltDeduction(
+    input.stateLocalTaxes + input.propertyTaxes,
+    filingStatus,
+    adjustedGrossIncome,
+  );
+  const charitableContributions = input.charitableContributions + input.cashDonations + input.nonCashDonations;
   const itemizedDeductions =
     medicalDeduction +
     saltDeduction +
     input.mortgageInterest +
-    input.charitableContributions;
+    charitableContributions;
 
-  const additionalStandardDeduction = input.age >= 65
-    ? (
-        filingStatus === "Single" || filingStatus === "Head of Household"
-          ? 2000
-          : 1600
-      )
+  const taxpayerAdditionalStandardDeduction = input.age >= 65
+    ? (filingStatus === "Single" || filingStatus === "Head of Household" ? 2000 : 1600)
     : 0;
+  const spouseAdditionalStandardDeduction =
+    filingStatus === "Married Filing Jointly" && input.spouseAge >= 65 ? 1600 : 0;
+  const additionalStandardDeduction = taxpayerAdditionalStandardDeduction + spouseAdditionalStandardDeduction;
+  const standardDeductionBase = STANDARD_DEDUCTION_2025[filingStatus];
+  const earnedIncomeForDependentStandardDeduction = wageIncomeAfterDeferrals + netBusinessProfit;
+  const standardDeduction = input.canBeClaimedAsDependent && filingStatus !== "Married Filing Jointly"
+    ? calculateDependentStandardDeduction(
+        earnedIncomeForDependentStandardDeduction,
+        standardDeductionBase,
+        additionalStandardDeduction,
+      )
+    : standardDeductionBase + additionalStandardDeduction;
 
   const standardOrItemizedDeduction = Math.max(
-    STANDARD_DEDUCTION_2025[filingStatus] + additionalStandardDeduction,
+    standardDeduction,
     itemizedDeductions,
   );
+  const deductionType = itemizedDeductions > standardDeduction ? "Itemized" : "Standard";
 
   const taxableIncome = clampToZero(adjustedGrossIncome - standardOrItemizedDeduction);
   const preferentialIncome = Math.min(
@@ -396,14 +462,30 @@ export function calculateTax(input: CalculateTaxRequest): CalculateTaxResponse {
     input.dependentsInSchool,
     input.educationExpenses > 0 ? 1 : 0,
   );
-  const educationCredit = calculateAmericanOpportunityCredit(
-    input.educationExpenses,
-    educationStudents,
-    adjustedGrossIncome,
-    filingStatus,
+  const fullAmericanOpportunityCredit = input.isFirstFourYearsCollege
+    ? calculateAmericanOpportunityCredit(
+        input.educationExpenses,
+        educationStudents,
+        adjustedGrossIncome,
+        filingStatus,
+      )
+    : 0;
+  const refundableEducationCredit = Math.min(
+    fullAmericanOpportunityCredit * 0.4,
+    educationStudents * 1000,
   );
+  const nonRefundableEducationCredit = input.isFirstFourYearsCollege
+    ? Math.max(0, fullAmericanOpportunityCredit - refundableEducationCredit)
+    : calculateLifetimeLearningCredit(
+        input.educationExpenses,
+        adjustedGrossIncome,
+        filingStatus,
+      );
 
-  const otherNonRefundableCredits = dependentCareCredit + energyCredit + educationCredit;
+  const otherNonRefundableCredits =
+    dependentCareCredit +
+    energyCredit +
+    nonRefundableEducationCredit;
   const otherNonRefundableCreditsApplied = Math.min(federalTaxBeforeCredits, otherNonRefundableCredits);
   const remainingFederalTaxAfterOtherCredits = Math.max(0, federalTaxBeforeCredits - otherNonRefundableCreditsApplied);
   const childTaxCreditApplied = Math.min(childTaxCreditTotal, remainingFederalTaxAfterOtherCredits);
@@ -417,26 +499,33 @@ export function calculateTax(input: CalculateTaxRequest): CalculateTaxResponse {
     earnedIncomeForActc,
     input.dependentsUnder17,
     remainingChildTaxCredit,
-  );
+  ) + refundableEducationCredit;
 
   const estimatedTax = Math.max(0, federalTaxBeforeCredits - totalCredits);
   const stateIncomeTax = calculateStateIncomeTax(input.state, adjustedGrossIncome, taxableIncome);
   const totalPayments = input.taxesWithheld + input.stateTaxesWithheld;
   const totalLiability = estimatedTax + selfEmploymentTax + stateIncomeTax;
   const refundOrOwe = totalPayments + refundableCredits - totalLiability;
+  const effectiveTaxRate = totalIncome > 0 ? (totalLiability / totalIncome) * 100 : 0;
 
   return {
     totalIncome: Math.round(totalIncome),
     adjustedGrossIncome: Math.round(adjustedGrossIncome),
+    totalAdjustments: Math.round(totalAdjustments),
+    itemizedDeductions: Math.round(itemizedDeductions),
+    deductionType,
     standardOrItemizedDeduction: Math.round(standardOrItemizedDeduction),
     taxableIncome: Math.round(taxableIncome),
+    federalTaxBeforeCredits: Math.round(federalTaxBeforeCredits),
     estimatedTax: Math.round(estimatedTax),
     selfEmploymentTax: Math.round(selfEmploymentTax),
     stateIncomeTax: Math.round(stateIncomeTax),
     totalCredits: Math.round(totalCredits),
     refundableCredits: Math.round(refundableCredits),
     totalPayments: Math.round(totalPayments),
+    totalLiability: Math.round(totalLiability),
     refundOrOwe: Math.round(refundOrOwe),
+    effectiveTaxRate: Math.round(effectiveTaxRate * 100) / 100,
   };
 }
 

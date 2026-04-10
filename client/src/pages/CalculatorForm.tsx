@@ -34,6 +34,10 @@ const formSchema = z.object({
   }),
   state: z.enum(stateValues).default("Other"),
   age: z.coerce.number().min(1, "Age is required").max(120, "Invalid age"),
+  spouseAge: z.coerce.number().int().min(0).max(120).default(0),
+  canBeClaimedAsDependent: z.boolean().default(false),
+  isFirstFourYearsCollege: z.boolean().default(false),
+  legacyAlimonyAgreement: z.boolean().default(false),
   dependentsUnder17: z.coerce.number().int().min(0).default(0),
   dependentsInSchool: z.coerce.number().int().min(0).default(0),
   otherDependents: z.coerce.number().int().min(0).default(0),
@@ -45,6 +49,7 @@ const formSchema = z.object({
   businessExpenses: z.coerce.number().int().min(0).default(0),
   taxesWithheld: z.coerce.number().int().min(0).default(0),
   stateTaxesWithheld: z.coerce.number().int().min(0).default(0),
+  workplaceRetirementContributions: z.coerce.number().int().min(0).default(0),
   interestIncome: z.coerce.number().int().min(0).default(0),
   dividendIncome: z.coerce.number().int().min(0).default(0),
   qualifiedDividends: z.coerce.number().int().min(0).default(0),
@@ -57,8 +62,12 @@ const formSchema = z.object({
   studentLoanInterest: z.coerce.number().int().min(0).default(0),
   medicalExpenses: z.coerce.number().int().min(0).default(0),
   stateLocalTaxes: z.coerce.number().int().min(0).default(0),
+  propertyTaxes: z.coerce.number().int().min(0).default(0),
   mortgageInterest: z.coerce.number().int().min(0).default(0),
   charitableContributions: z.coerce.number().int().min(0).default(0),
+  cashDonations: z.coerce.number().int().min(0).default(0),
+  nonCashDonations: z.coerce.number().int().min(0).default(0),
+  alimonyPayments: z.coerce.number().int().min(0).default(0),
 
   // Credits
   childcareExpenses: z.coerce.number().int().min(0).default(0),
@@ -72,6 +81,14 @@ const formSchema = z.object({
       path: ["qualifiedDividends"],
     });
   }
+
+  if (value.filingStatus === "Married Filing Jointly" && value.spouseAge < 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Spouse age is required for a joint return",
+      path: ["spouseAge"],
+    });
+  }
 });
 
 type FormValues = z.infer<typeof formSchema>;
@@ -81,6 +98,10 @@ const defaultValues: FormValues = {
   filingStatus: "Single",
   state: "Other",
   age: 30,
+  spouseAge: 0,
+  canBeClaimedAsDependent: false,
+  isFirstFourYearsCollege: false,
+  legacyAlimonyAgreement: false,
   dependentsUnder17: 0,
   dependentsInSchool: 0,
   otherDependents: 0,
@@ -90,6 +111,7 @@ const defaultValues: FormValues = {
   businessExpenses: 0,
   taxesWithheld: 0,
   stateTaxesWithheld: 0,
+  workplaceRetirementContributions: 0,
   interestIncome: 0,
   dividendIncome: 0,
   qualifiedDividends: 0,
@@ -100,8 +122,12 @@ const defaultValues: FormValues = {
   studentLoanInterest: 0,
   medicalExpenses: 0,
   stateLocalTaxes: 0,
+  propertyTaxes: 0,
   mortgageInterest: 0,
   charitableContributions: 0,
+  cashDonations: 0,
+  nonCashDonations: 0,
+  alimonyPayments: 0,
   childcareExpenses: 0,
   energyImprovements: 0,
   educationExpenses: 0,
@@ -120,6 +146,11 @@ const stateOptionLabels: Record<typeof stateValues[number], string> = {
   Pennsylvania: "Pennsylvania",
   Texas: "Texas",
 };
+
+const yesNoOptions = [
+  { label: "No", value: false },
+  { label: "Yes", value: true },
+] as const;
 
 import { useLocation } from "wouter";
 
@@ -142,6 +173,7 @@ export default function CalculatorForm() {
 
   const filingStatus = watch("filingStatus");
   const showSpouseFields = filingStatus === "Married Filing Jointly";
+  const legacyAlimonyAgreement = watch("legacyAlimonyAgreement");
 
   const onSubmit = (data: FormValues) => {
     // Only submit on the last step
@@ -246,7 +278,7 @@ export default function CalculatorForm() {
                 Your Tax Summary | 2025
               </h1>
               <p className="mt-4 text-lg text-muted-foreground max-w-2xl mx-auto">
-                Based on current published 2025 tax rules and the information you entered, here is your estimated federal, state, and self-employment tax picture.
+                Based on a more complete 2025 tax model with retirement, education, property tax, and withholding inputs, here is your estimated federal, state, and self-employment tax picture.
               </p>
             </div>
 
@@ -321,16 +353,19 @@ export default function CalculatorForm() {
                 </div>
                 
                 <div className="space-y-4">
-                  <ResultRow label="Total Gross Income" value={result.totalIncome} />
+                  <ResultRow label="Total Income Used in Return" value={result.totalIncome} />
                   <ResultRow label="Adjusted Gross Income (AGI)" value={result.adjustedGrossIncome} />
+                  <ResultRow label="Above-the-line Adjustments" value={result.totalAdjustments} tone="credit" />
                   <div className="my-4 border-t border-border/40" />
                   
-                  <ResultRow label="Standard/Itemized Deduction" value={result.standardOrItemizedDeduction} />
+                  <ResultRow label={`${result.deductionType} Deduction Used`} value={result.standardOrItemizedDeduction} />
+                  <ResultRow label="Potential Itemized Deductions" value={result.itemizedDeductions} />
                   <ResultRow label="Taxable Income" value={result.taxableIncome} highlighted />
                   <div className="my-4 border-t border-border/40" />
                   
                   <div className="space-y-2 mb-6">
                     <h4 className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-4">Tax Liability Breakout</h4>
+                    <ResultRow label="Federal Tax Before Credits" value={result.federalTaxBeforeCredits} />
                     <ResultRow label="Federal Income Tax" value={result.estimatedTax} />
                     <ResultRow label="Self-Employment Tax" value={result.selfEmploymentTax} />
                     <ResultRow label="Estimated State Tax" value={result.stateIncomeTax} />
@@ -344,12 +379,23 @@ export default function CalculatorForm() {
                   <div className="pt-4 border-t-2 border-primary/20">
                     <div className="flex justify-between items-center py-4 px-5 bg-primary/5 rounded-2xl border border-primary/10">
                       <div>
-                        <span className="block font-bold text-primary text-lg">Total Taxes Owed</span>
-                        <span className="text-xs text-primary/60 font-medium">Sum of all liabilities after credits</span>
+                        <span className="block font-bold text-primary text-lg">Total Tax Liability</span>
+                        <span className="text-xs text-primary/60 font-medium">Federal after credits plus self-employment and state taxes</span>
                       </div>
                       <span className="text-2xl font-display font-extrabold text-primary">
-                        ${(result.estimatedTax + result.selfEmploymentTax + result.stateIncomeTax).toLocaleString()}
+                        ${result.totalLiability.toLocaleString()}
                       </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="rounded-2xl border border-border/50 bg-muted/20 px-5 py-4">
+                      <span className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Effective Tax Rate</span>
+                      <span className="text-2xl font-display font-bold text-foreground">{result.effectiveTaxRate.toFixed(2)}%</span>
+                    </div>
+                    <div className="rounded-2xl border border-border/50 bg-muted/20 px-5 py-4">
+                      <span className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Payments Entered</span>
+                      <span className="text-2xl font-display font-bold text-foreground">${result.totalPayments.toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
@@ -396,7 +442,7 @@ export default function CalculatorForm() {
                 <div className="mt-8 pt-6 border-t border-border/40 flex items-start gap-3">
                   <Info className="w-4 h-4 text-muted-foreground/60 flex-shrink-0 mt-0.5" />
                   <p className="text-[10px] text-muted-foreground/60 leading-relaxed italic">
-                    Disclaimer: This tool is an estimate based on published 2025 federal rules and a limited set of state calculations. It does not fully model local taxes, AMT, EITC, NIIT, or every phaseout and eligibility test. Always confirm final numbers with a qualified tax professional.
+                    Disclaimer: This tool is a detailed estimate based on published 2025 federal rules and a limited set of state calculations. It still does not fully model every edge case, including EITC, AMT, NIIT, all local taxes, and every education or alimony eligibility rule. Always confirm final numbers with a qualified tax professional.
                   </p>
                 </div>
               </div>
@@ -504,6 +550,54 @@ export default function CalculatorForm() {
                             error={errors.age?.message} 
                           />
                         </div>
+                        {showSpouseFields && (
+                          <div>
+                            <Label htmlFor="spouseAge">Spouse Age</Label>
+                            <Input
+                              id="spouseAge"
+                              type="number"
+                              {...register("spouseAge")}
+                              error={errors.spouseAge?.message}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t border-border/50">
+                        <div>
+                          <Label>Can someone claim you as a dependent?</Label>
+                          <Controller
+                            name="canBeClaimedAsDependent"
+                            control={control}
+                            render={({ field }) => (
+                              <RadioCardGroup
+                                value={field.value ? "true" : "false"}
+                                onChange={(value) => field.onChange(value === "true")}
+                                options={yesNoOptions.map((option) => ({
+                                  label: option.label,
+                                  value: String(option.value),
+                                }))}
+                              />
+                            )}
+                          />
+                        </div>
+                        <div>
+                          <Label>First Four Years of College?</Label>
+                          <Controller
+                            name="isFirstFourYearsCollege"
+                            control={control}
+                            render={({ field }) => (
+                              <RadioCardGroup
+                                value={field.value ? "true" : "false"}
+                                onChange={(value) => field.onChange(value === "true")}
+                                options={yesNoOptions.map((option) => ({
+                                  label: option.label,
+                                  value: String(option.value),
+                                }))}
+                              />
+                            )}
+                          />
+                        </div>
                       </div>
 
                       <div className="pt-4 border-t border-border/50">
@@ -560,6 +654,12 @@ export default function CalculatorForm() {
                         <MoneyInput id="stateTaxesWithheld" {...register("stateTaxesWithheld")} />
                       </div>
 
+                      <div className="sm:col-span-2">
+                        <Label htmlFor="workplaceRetirementContributions">401(k) / 403(b) / TSP Contributions</Label>
+                        <p className="text-xs text-muted-foreground mb-2">Enter total household pre-tax workplace retirement contributions that are not already reflected in your taxable wage number.</p>
+                        <MoneyInput id="workplaceRetirementContributions" {...register("workplaceRetirementContributions")} />
+                      </div>
+
                       <div className="sm:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t border-border/50">
                         <div className="sm:col-span-2">
                           <h3 className="font-semibold text-lg mb-2">Self-Employment / Business</h3>
@@ -602,6 +702,10 @@ export default function CalculatorForm() {
                           <Label htmlFor="longTermCapitalGains">Long-Term Cap. Gains</Label>
                           <MoneyInput id="longTermCapitalGains" {...register("longTermCapitalGains")} />
                         </div>
+                        <div>
+                          <Label htmlFor="otherIncome">Other Taxable Income</Label>
+                          <MoneyInput id="otherIncome" {...register("otherIncome")} />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -611,8 +715,8 @@ export default function CalculatorForm() {
                 {step === 3 && (
                   <div className="space-y-8">
                     <div>
-                      <h2 className="text-3xl font-display font-bold mb-2">Common Deductions</h2>
-                      <p className="text-muted-foreground">We'll automatically choose between these and the standard deduction to give you the best result.</p>
+                      <h2 className="text-3xl font-display font-bold mb-2">Adjustments & Deductions</h2>
+                      <p className="text-muted-foreground">This step adds the kinds of details that make refund and amount-owed estimates feel much closer to a real return.</p>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -630,16 +734,53 @@ export default function CalculatorForm() {
                       </div>
                       <div>
                         <Label htmlFor="stateLocalTaxes">State & Local Taxes (SALT)</Label>
+                        <p className="text-xs text-muted-foreground mb-2">Use state income or sales taxes here. Property taxes go in the next field.</p>
                         <MoneyInput id="stateLocalTaxes" {...register("stateLocalTaxes")} />
+                      </div>
+                      <div>
+                        <Label htmlFor="propertyTaxes">Real Estate / Property Taxes</Label>
+                        <MoneyInput id="propertyTaxes" {...register("propertyTaxes")} />
                       </div>
                       <div>
                         <Label htmlFor="medicalExpenses">Medical Expenses (Out of pocket)</Label>
                         <MoneyInput id="medicalExpenses" {...register("medicalExpenses")} />
                       </div>
                       <div>
-                        <Label htmlFor="charitableContributions">Charitable Donations</Label>
+                        <Label htmlFor="charitableContributions">Other Charitable Donations</Label>
                         <MoneyInput id="charitableContributions" {...register("charitableContributions")} />
                       </div>
+                      <div>
+                        <Label htmlFor="cashDonations">Cash Donations</Label>
+                        <MoneyInput id="cashDonations" {...register("cashDonations")} />
+                      </div>
+                      <div>
+                        <Label htmlFor="nonCashDonations">Non-Cash Donations</Label>
+                        <MoneyInput id="nonCashDonations" {...register("nonCashDonations")} />
+                      </div>
+                      <div className="sm:col-span-2 pt-4 border-t border-border/50">
+                        <Label>Legacy Alimony Agreement?</Label>
+                        <p className="text-xs text-muted-foreground mb-3">Only choose yes if the divorce or separation agreement was executed before 2019 and still qualifies for an alimony deduction.</p>
+                        <Controller
+                          name="legacyAlimonyAgreement"
+                          control={control}
+                          render={({ field }) => (
+                            <RadioCardGroup
+                              value={field.value ? "true" : "false"}
+                              onChange={(value) => field.onChange(value === "true")}
+                              options={yesNoOptions.map((option) => ({
+                                label: option.label,
+                                value: String(option.value),
+                              }))}
+                            />
+                          )}
+                        />
+                      </div>
+                      {legacyAlimonyAgreement && (
+                        <div className="sm:col-span-2">
+                          <Label htmlFor="alimonyPayments">Eligible Alimony Paid</Label>
+                          <MoneyInput id="alimonyPayments" {...register("alimonyPayments")} />
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
