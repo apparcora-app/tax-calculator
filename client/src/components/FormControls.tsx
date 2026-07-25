@@ -159,7 +159,7 @@ export function RadioCardGroup({
             value={opt.value}
             checked={value === opt.value}
             onChange={() => onChange(opt.value)}
-            className="sr-only"
+            className="absolute inset-0 opacity-0 cursor-pointer z-10"
           />
           <div className="flex items-center justify-between mb-1">
             <span className={cn(
