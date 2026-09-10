@@ -1,13 +1,32 @@
 {
-  "name": "rest-express",
+  "name": "us-tax-calculator-2025",
   "version": "1.0.0",
+  "description": "High-precision, privacy-preserving 2025 US Federal and State income tax calculation engine",
   "type": "module",
   "license": "MIT",
+  "author": "Hanzla Rehman",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/apparcora-app/tax-calculator.git"
+  },
+  "keywords": [
+    "tax-calculator",
+    "tax-year-2025",
+    "irs",
+    "amt",
+    "eitc",
+    "fica",
+    "typescript",
+    "react",
+    "vite",
+    "tailwind"
+  ],
   "scripts": {
     "dev": "NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
+    "test": "tsx test/calculator.test.ts",
     "db:push": "drizzle-kit push",
     "deploy:firebase": "npm run build && npx firebase-tools deploy"
   },

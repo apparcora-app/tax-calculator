@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Calculator, Calculator as CalcIcon } from "lucide-react";
+import { Calculator } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -10,7 +10,7 @@ function cn(...inputs: ClassValue[]) {
 export function Layout({ children }: { children: React.ReactNode }) {
   const [pathname] = useLocation();
   const navItems = [
-    { href: "/", label: "Estimator", icon: CalcIcon },
+    { href: "/", label: "Estimator", icon: Calculator },
   ];
 
   return (
