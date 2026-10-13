@@ -1,9 +1,9 @@
 import { useMutation } from "@tanstack/react-query";
 import { api, type CalculateTaxInput, type CalculateTaxResponse } from "@shared/routes";
 import { calculateTax } from "@shared/calculator";
+import type { TaxCalculationRecord } from "@shared/schema";
 import { z } from "zod";
 
-// Create a robust logging parser to catch silent validation failures
 function parseWithLogging<T>(schema: z.ZodSchema<T>, data: unknown, label: string): T {
   const result = schema.safeParse(data);
   if (!result.success) {
@@ -16,40 +16,35 @@ function parseWithLogging<T>(schema: z.ZodSchema<T>, data: unknown, label: strin
 export function useCalculateTax() {
   return useMutation({
     mutationFn: async (data: CalculateTaxInput): Promise<CalculateTaxResponse> => {
-      // Ensure we're sending what the backend expects by parsing through input schema first
+      // 1. Strict input validation
       const validatedInput = api.tax.calculate.input.parse(data);
-      
+
+      // 2. Pure client-side deterministic tax engine (100% privacy, zero network transmission)
+      const calcResult = calculateTax(validatedInput);
+      const validatedOutput = parseWithLogging(api.tax.calculate.responses[200], calcResult, "CalculateTaxResponse");
+
+      // 3. Atomically persist calculation snapshot to local client history
       try {
-        const res = await fetch(api.tax.calculate.path, {
-          method: api.tax.calculate.method,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(validatedInput),
-          credentials: "include",
-        });
+        if (typeof window !== "undefined" && window.localStorage) {
+          const STORAGE_KEY = "tax_calculator_history";
+          const existingRaw = window.localStorage.getItem(STORAGE_KEY);
+          const history: TaxCalculationRecord[] = existingRaw ? JSON.parse(existingRaw) : [];
 
-        if (res.ok) {
-          const rawResponse = await res.json();
-          return parseWithLogging(api.tax.calculate.responses[200], rawResponse, "CalculateTaxResponse");
-        }
+          const snapshot: TaxCalculationRecord = {
+            ...validatedInput,
+            id: `calc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            createdAt: new Date().toISOString(),
+            results: validatedOutput,
+          };
 
-        if (res.status === 400) {
-          const errorData = await res.json();
-          const error = api.tax.calculate.responses[400].parse(errorData);
-          throw new Error(error.message || "Validation failed");
+          const updated = [snapshot, ...history.filter((item) => item.id !== snapshot.id)].slice(0, 50);
+          window.localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
         }
-      } catch (err: any) {
-        // If validation failed explicitly, rethrow
-        if (err.message && err.message.includes("Validation failed")) {
-          throw err;
-        }
-        // Otherwise, fall back to pure client-side calculation (e.g. static hosting on Firebase)
-        console.warn("Backend API unavailable, using client-side calculation engine:", err);
+      } catch (storageErr) {
+        console.warn("Could not save to client localStorage history:", storageErr);
       }
 
-      // Execute client-side tax calculation
-      const calcResult = calculateTax(validatedInput);
-      return parseWithLogging(api.tax.calculate.responses[200], calcResult, "CalculateTaxResponse");
+      return validatedOutput;
     },
   });
 }
-

@@ -139,10 +139,9 @@ tax-calculator/
 ├── shared/                              # Universal TypeScript Contracts (Isomorphic)
 │   ├── calculator.ts                    # 2025 IRS Tax Engine (Pure deterministic logic)
 │   ├── routes.ts                        # REST endpoint schemas & Zod contract definitions
-│   └── schema.ts                        # Drizzle ORM schemas & inferred TypeScript types
+│   └── schema.ts                        # Zod validation schemas & inferred TypeScript types
 ├── script/
 │   └── build.ts                         # Custom dual-target build runner (Vite + esbuild)
-├── drizzle.config.ts                    # Drizzle ORM PostgreSQL configuration
 ├── firebase.json                        # Firebase Hosting static SPA rewrite & cache config
 ├── .firebaserc                          # Firebase project target credentials mapping
 ├── vercel.json                          # Vercel static build & CSP security configuration
