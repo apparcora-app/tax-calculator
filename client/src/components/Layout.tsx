@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Calculator } from "lucide-react";
+import { Calculator, History } from "lucide-react";
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -11,6 +11,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [pathname] = useLocation();
   const navItems = [
     { href: "/", label: "Estimator", icon: Calculator },
+    { href: "/history", label: "History", icon: History },
   ];
 
   return (
