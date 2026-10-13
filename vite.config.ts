@@ -26,6 +26,8 @@ export default defineConfig({
             "lucide-react",
           ],
           "vendor-charts": ["recharts"],
+          "vendor-pdf": ["jspdf", "html2canvas"],
+          "vendor-forms": ["react-hook-form", "@hookform/resolvers", "zod"],
         },
       },
     },

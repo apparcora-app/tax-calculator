@@ -6,12 +6,14 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 
 import CalculatorForm from "./pages/CalculatorForm";
+import RecentCalculations from "./pages/RecentCalculations";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={CalculatorForm} />
       <Route path="/embed" component={CalculatorForm} />
+      <Route path="/history" component={RecentCalculations} />
       <Route component={NotFound} />
     </Switch>
   );
