@@ -29,7 +29,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "frame-ancestors 'self' http://loyaltaxservices.org http://www.loyaltaxservices.org https://loyaltaxservices.org https://www.loyaltaxservices.org"
+          "value": "frame-ancestors 'self' https://loyaltaxservices.org https://www.loyaltaxservices.org"
         }
       ]
     }

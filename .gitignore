@@ -1,7 +1,26 @@
-node_modules
-dist
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+
+# Local & IDE Artifacts
+.local/
+.replit
 .DS_Store
-server/public
+*.db
+*.db-shm
+*.db-wal
+.vscode/
+.idea/
+
+# Production Build & Runtime
+dist/
+server/public/
 vite.config.ts.*
 *.tar.gz
-.firebase
+.firebase/
